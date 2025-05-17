@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bill's Phone WebRTC Tester</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #121212;
+            color: white;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .status-box {
+            background-color: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .video-container {
+            background-color: #2C3E50;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            position: relative;
+        }
+        #remoteVideo {
+            width: 100%;
+            background: #000;
+            border-radius: 10px;
+        }
+        #localVideo {
+            position: absolute;
+            width: 120px;
+            bottom: 10px;
+            right: 10px;
+            border: 2px solid white;
+            border-radius: 5px;
+            background: #333;
+        }
+        .button {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 50px;
+            font-size: 18px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+        .call-button {
+            background-color: #4CAF50;
+        }
+        .end-button {
+            background-color: #F44336;
+        }
+        .log-container {
+            background-color: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 10px;
+            height: 150px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            margin-top: 20px;
+        }
+        .connection-field {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border-radius: 5px;
+            border: none;
+            background-color: rgba(255,255,255,0.2);
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Bill's Phone WebRTC Tester</h1>
+        
+        <div class="connection-field">
+            <label for="serverUrl">Signaling Server URL:</label>
+            <input type="text" id="serverUrl" value="http://localhost:3000">
+        </div>
+        
+        <div class="connection-field">
+            <label for="deviceRole">Select Role:</label>
+            <select id="deviceRole" onchange="updateDeviceId()">
+                <option value="bill">Bill's Phone</option>
+                <option value="caller">Caller</option>
+            </select>
+        </div>
+        
+        <div class="connection-field">
+            <label for="targetId">Target to Call:</label>
+            <select id="targetId">
+                <option value="bill">Bill's Phone</option>
+                <option value="caller">Caller</option>
+            </select>
+        </div>
+        
+        <div class="status-box">
+            <p>Connection Status: <span id="connectionStatus">Disconnected</span></p>
+            <p>Device ID: <span id="deviceId">Not assigned</span></p>
+            <p>Call Status: <span id="callStatus">Idle</span></p>
+        </div>
+        
+        <div class="video-container">
+            <video id="remoteVideo" autoplay playsinline></video>
+            <video id="localVideo" autoplay playsinline muted></video>
+        </div>
+        
+        <button id="callButton" class="button call-button">Start Call</button>
+        <button id="endButton" class="button end-button" style="display: none;">End Call</button>
+        
+        <div class="log-container" id="logContainer">
+            <div>Logs will appear here...</div>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <script>
+        // DOM elements
+        const serverUrlInput = document.getElementById('serverUrl');
+        const targetIdInput = document.getElementById('targetId');
+        const connectionStatusEl = document.getElementById('connectionStatus');
+        const deviceIdEl = document.getElementById('deviceId');
+        const callStatusEl = document.getElementById('callStatus');
+        const callButton = document.getElementById('callButton');
+        const endButton = document.getElementById('endButton');
+        const remoteVideo = document.getElementById('remoteVideo');
+        const localVideo = document.getElementById('localVideo');
+        const logContainer = document.getElementById('logContainer');
+
+        // WebRTC variables
+        let socket;
+        let deviceId = null;
+        let peerConnection = null;
+        let localStream = null;
+        let remoteStream = null;
+        let isConnected = false;
+        let isInCall = false;
+
+        // Log function
+        function log(message) {
+            const logEntry = document.createElement('div');
+            logEntry.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            console.log(message);
+        }
+
+        // Connect to signaling server
+        callButton.addEventListener('click', async () => {
+            if (!isConnected) {
+                connectToSignalingServer();
+            } else if (!isInCall) {
+                startCall();
+            }
+        });
+
+        endButton.addEventListener('click', () => {
+            endCall();
+        });
+
+        async function connectToSignalingServer() {
+            const serverUrl = serverUrlInput.value;
+            
+            log(`Connecting to signaling server: ${serverUrl}`);
+            connectionStatusEl.textContent = 'Connecting...';
+            
+            try {
+                // Close any existing socket
+                if (socket) {
+                    socket.close();
+                }
+                
+                socket = io(serverUrl, {
+                    transports: ['websocket', 'polling'],  // Try both transport types
+                    reconnection: true,
+                    reconnectionAttempts: 10,
+                    reconnectionDelay: 1000,
+                    timeout: 10000
+                });
+                
+                setupSocketEvents();
+                
+                // Auto-reconnect if connection fails within 5 seconds
+                setTimeout(() => {
+                    if (!isConnected) {
+                        log('Connection timeout - trying polling transport');
+                        socket.close();
+                        socket = io(serverUrl, {
+                            transports: ['polling'],  // Fallback to polling
+                            reconnection: true
+                        });
+                        setupSocketEvents();
+                    }
+                }, 5000);
+            } catch (error) {
+                log(`Connection error: ${error.message}`);
+                connectionStatusEl.textContent = 'Connection Failed';
+            }
+        }
+
+        function updateDeviceId() {
+            const role = document.getElementById('deviceRole').value;
+            const targetSelect = document.getElementById('targetId');
+            
+            // Set my device ID based on role
+            deviceId = role;
+            deviceIdEl.textContent = role;
+            
+            // Update target dropdown to exclude my role
+            targetSelect.innerHTML = '';
+            if (role === 'bill') {
+                targetSelect.innerHTML = '<option value="caller">Caller</option>';
+            } else {
+                targetSelect.innerHTML = '<option value="bill">Bill\'s Phone</option>';
+            }
+            
+            log(`Role changed to: ${role}`);
+        }
+        
+        function setupSocketEvents() {
+            socket.on('connect', () => {
+                isConnected = true;
+                // Override the socket.id with our simple role-based ID
+                const role = document.getElementById('deviceRole').value;
+                deviceId = role;
+                deviceIdEl.textContent = deviceId;
+                connectionStatusEl.textContent = 'Connected';
+                callButton.textContent = 'Start Call';
+                log('Connected to signaling server');
+                
+                // Register with the server using our simple ID
+                setTimeout(() => {
+                    socket.emit('register', { deviceId: deviceId });
+                    log(`Registered as: ${deviceId}`);
+                    
+                    // Send a second registration after a short delay (helps with mobile browser issues)
+                    setTimeout(() => {
+                        socket.emit('register', { deviceId: deviceId });
+                        log(`Re-registered as: ${deviceId}`);
+                    }, 1000);
+                }, 500);
+            });
+
+            socket.on('connect_error', (error) => {
+                log(`Connection error: ${error.message}`);
+                isConnected = false;
+                connectionStatusEl.textContent = 'Connection Failed';
+            });
+
+            socket.on('disconnect', (reason) => {
+                log(`Disconnected: ${reason}`);
+                isConnected = false;
+                connectionStatusEl.textContent = 'Disconnected';
+                
+                if (isInCall) {
+                    endCall();
+                }
+            });
+
+            socket.on('incomingCall', async (data) => {
+                log(`Incoming call from: ${data.from}`);
+                callStatusEl.textContent = 'Incoming Call';
+                
+                if (confirm(`Incoming call from ${data.from}. Accept?`)) {
+                    await setupPeerConnection();
+                    await answerCall(data);
+                } else {
+                    socket.emit('callRejected', { to: data.from });
+                }
+            });
+
+            socket.on('callAccepted', async (data) => {
+                log('Call accepted');
+                try {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+                    callStatusEl.textContent = 'Connected';
+                } catch (error) {
+                    log(`Error setting remote description: ${error.message}`);
+                }
+            });
+
+            socket.on('iceCandidate', async (data) => {
+                log(`Received ICE candidate from: ${data.from}`);
+                try {
+                    if (peerConnection) {
+                        await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                    }
+                } catch (error) {
+                    log(`Error adding ICE candidate: ${error.message}`);
+                }
+            });
+
+            socket.on('callEnded', (data) => {
+                log(`Call ended by: ${data.from}`);
+                endCall();
+            });
+
+            socket.on('callRejected', (data) => {
+                log(`Call rejected by: ${data.from}`);
+                endCall();
+                alert('Call was rejected');
+            });
+
+            socket.on('callError', (data) => {
+                log(`Call error: ${data.message}`);
+                alert(`Call error: ${data.message}`);
+                endCall();
+            });
+        }
+
+        async function setupPeerConnection() {
+            log('Setting up peer connection');
+            
+            try {
+                // Get user media
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    audio: true,
+                    video: true
+                });
+                
+                localVideo.srcObject = localStream;
+                
+                // Create peer connection
+                const configuration = {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                };
+                
+                peerConnection = new RTCPeerConnection(configuration);
+                
+                // Add local stream to peer connection
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                });
+                
+                // Handle remote stream
+                peerConnection.ontrack = (event) => {
+                    log('Received remote track');
+                    if (event.streams && event.streams[0]) {
+                        remoteStream = event.streams[0];
+                        remoteVideo.srcObject = remoteStream;
+                    }
+                };
+                
+                // Handle ICE candidates
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        log('Sending ICE candidate');
+                        socket.emit('iceCandidate', {
+                            to: targetIdInput.value,
+                            candidate: event.candidate
+                        });
+                    }
+                };
+                
+                // Handle connection state changes
+                peerConnection.oniceconnectionstatechange = () => {
+                    log(`ICE connection state: ${peerConnection.iceConnectionState}`);
+                    
+                    if (peerConnection.iceConnectionState === 'connected') {
+                        callStatusEl.textContent = 'Connected';
+                    } else if (peerConnection.iceConnectionState === 'disconnected' || 
+                               peerConnection.iceConnectionState === 'failed') {
+                        endCall();
+                    }
+                };
+                
+                return true;
+            } catch (error) {
+                log(`Media error: ${error.message}`);
+                alert(`Could not access camera or microphone: ${error.message}`);
+                return false;
+            }
+        }
+
+        async function startCall() {
+            const targetId = targetIdInput.value;
+            
+            if (!targetId) {
+                alert('Please enter a target device ID');
+                return;
+            }
+            
+            log(`Starting call to: ${targetId}`);
+            callStatusEl.textContent = 'Calling...';
+            callButton.style.display = 'none';
+            endButton.style.display = 'block';
+            isInCall = true;
+            
+            try {
+                const success = await setupPeerConnection();
+                
+                if (!success) {
+                    endCall();
+                    return;
+                }
+                
+                // Create offer
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                
+                // Send offer to signaling server
+                socket.emit('makeCall', {
+                    to: targetId,
+                    offer: peerConnection.localDescription
+                });
+            } catch (error) {
+                log(`Error starting call: ${error.message}`);
+                endCall();
+                alert('Failed to start call');
+            }
+        }
+
+        async function answerCall(data) {
+            log(`Answering call from: ${data.from}`);
+            targetIdInput.value = data.from;
+            callStatusEl.textContent = 'Answering...';
+            callButton.style.display = 'none';
+            endButton.style.display = 'block';
+            isInCall = true;
+            
+            try {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+                
+                // Create answer
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                
+                // Send answer to signaling server
+                socket.emit('answerCall', {
+                    to: data.from,
+                    answer: peerConnection.localDescription
+                });
+                
+                callStatusEl.textContent = 'Connected';
+            } catch (error) {
+                log(`Error answering call: ${error.message}`);
+                endCall();
+                alert('Failed to answer call');
+            }
+        }
+
+        function endCall() {
+            log('Ending call');
+            callStatusEl.textContent = 'Idle';
+            callButton.style.display = 'block';
+            endButton.style.display = 'none';
+            isInCall = false;
+            
+            // Send end call signal if in a call
+            if (targetIdInput.value && isConnected) {
+                socket.emit('endCall', { to: targetIdInput.value });
+            }
+            
+            // Close peer connection
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            
+            // Stop local stream
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+                localVideo.srcObject = null;
+            }
+            
+            // Clear remote stream
+            remoteStream = null;
+            remoteVideo.srcObject = null;
+        }
+
+        // Initialize
+        log('Web tester initialized');
+        callStatusEl.textContent = 'Idle';
+        updateDeviceId(); // Set initial device ID based on role
+    </script>
+</body>
+</html>
