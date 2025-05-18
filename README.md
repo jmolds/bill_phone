@@ -42,17 +42,26 @@ A dedicated kiosk-mode WebRTC calling app for Bill, an individual with disabilit
    npm start
    ```
    
-   b. **Development Build** (Required for WebRTC testing):
+   b. **WebRTC Test Environment** (For WebRTC connection testing):
    ```
-   npx expo prebuild
-   npx expo install react-native-webrtc socket.io-client
-   npx expo run:ios   # or run:android
+   cd web-tester
+   npx http-server -p 8080
+   ```
+   
+   c. **Development Build** (Required for WebRTC on iOS):
+   ```
+   # Requires an Apple Developer account ($99/year)
+   npm install -g eas-cli
+   eas login
+   eas build:configure
+   eas build --profile development --platform ios
    ```
 
 3. **Testing Between Two Devices:**
-   - Install on Bill's device and another test device
+   - For simulation testing: Use Expo Go on both devices
+   - For WebRTC testing: Use the web tester or EAS development build
    - Both devices must be on the same network
-   - Update the SIGNALING_SERVER_URL in WebRTCTest.js to your computer's IP
+   - Update the server URL to use your computer's IP address
    - Test calling in both directions
 
 ### Testing on iPhone
@@ -122,16 +131,26 @@ This requires Apple Developer Enterprise Program membership or Apple Configurato
 
 For production deployment:
 
-1. You'll need:
-   - Apple Developer Account
-   - Xcode on a Mac
-   - A provisioning profile
+1. **Requirements**:
+   - Apple Developer Account ($99/year) - Required for any iOS distribution
+   - EAS Build (cloud service) or Xcode on a Mac
+   - App Store provisioning profile
 
-2. Build with Expo EAS:
+2. **Build with Expo EAS** (Build in the cloud without a Mac):
    ```
    npm install -g eas-cli
+   eas login
    eas build:configure
    eas build --platform ios
+   ```
+
+3. **Install for Testing**:
+   - Development builds can be installed directly via QR code
+   - Production builds require TestFlight or App Store distribution
+   
+4. **App Store Submission**:
+   ```
+   eas submit -p ios
    ```
 
 ## Usage Instructions for Bill
@@ -162,25 +181,29 @@ For production deployment:
 - Implemented a minimal setup that reliably runs on Bill's iPhone
 - Added proper dependency management to ensure compatibility
 
-### Next Steps for WebRTC Implementation
+### WebRTC Implementation Status
 
-1. **Complete WebRTC Integration**:
+1. **Completed Steps**:
+   - ✅ Working signaling server implementation
+   - ✅ Simplified device registration with friendly IDs (bill/caller)
+   - ✅ Signal routing between devices verified
+   - ✅ Web-based WebRTC testing environment
+
+2. **Next Steps for WebRTC Integration**:
+   - Create EAS development build with WebRTC native modules
    - Integrate the WebRTCTest.js component with the main app
-   - Connect to the signaling server (already implemented in server.js)
-   - Test with development builds on physical devices
+   - Update the app to use the signaling server
    - Implement proper error handling for network issues
 
-2. **Create Companion App for Testing**:
+3. **Companion App Development**:
    - Develop a simple caller app for Bill's contacts to use
    - Test bidirectional calling with the same signaling server
    - Ensure compatibility across iOS and Android if needed
 
-3. **Accessibility Features**:
+4. **Accessibility & Reliability Features**:
    - Implement haptic feedback for call events
    - Ensure all UI elements are properly sized
    - Test with VoiceOver and other accessibility services
-
-4. **Kiosk Mode Setup**:
    - Verify Guided Access functionality works with the final app
    - Ensure app recovers from crashes or restarts
    - Test auto-reconnection to WebRTC after network interruptions
