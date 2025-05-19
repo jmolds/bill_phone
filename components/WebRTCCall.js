@@ -19,22 +19,37 @@ import io from 'socket.io-client';
 const { width, height } = Dimensions.get('window');
 
 // Signaling server URL as specified in requirements
-const SIGNALING_SERVER_URL = 'http://YOUR_SERVER:3000';
-// The trusted contact's ID - this should be configured with the actual ID
-const TRUSTED_CONTACT_ID = 'family-member-id';
-// Device ID for this phone
-const DEVICE_ID = 'bills-phone-device';
+const SIGNALING_SERVER_URL = 'http://143.198.180.248:3000';
+// Specific device IDs for production use
+// Bill's phone has a fixed ID so it can be consistently reached
+const DEVICE_ID = 'bills-iphone';
+// The trusted contact's ID that Bill can call
+const TRUSTED_CONTACT_ID = 'family-caller';
 
-const WebRTCCall = ({ isCallEnabled, onCallStatusChange }) => {
+const WebRTCCall = ({ isCallEnabled, onCallStatusChange, callStatus: externalCallStatus }) => {
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
-  const [callStatus, setCallStatus] = useState('idle'); // idle, calling, incoming, connected
+  // Internal call status is synchronized with external status from App.js
+  const [callStatus, setCallStatus] = useState(externalCallStatus || 'idle'); // idle, calling, incoming, connected
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   
   const peerConnection = useRef(null);
   const socket = useRef(null);
 
+  // Update internal state when external callStatus changes
+  useEffect(() => {
+    if (externalCallStatus && externalCallStatus !== callStatus) {
+      console.log('External call status changed to:', externalCallStatus);
+      setCallStatus(externalCallStatus);
+      
+      // If external status is 'calling', initiate the call
+      if (externalCallStatus === 'calling') {
+        makeCall();
+      }
+    }
+  }, [externalCallStatus]);
+  
   // Initialize WebRTC and socket connection
   useEffect(() => {
     // Setup socket connection with reconnection options
@@ -190,11 +205,14 @@ const WebRTCCall = ({ isCallEnabled, onCallStatusChange }) => {
 
   // Make an outgoing call
   const makeCall = async () => {
-    if (!isCallEnabled) return;
+    if (!isCallEnabled && callStatus !== 'calling') return;
     
     try {
-      setCallStatus('calling');
-      onCallStatusChange('calling');
+      // Only update if we're not already in 'calling' state from external update
+      if (callStatus !== 'calling') {
+        setCallStatus('calling');
+        onCallStatusChange('calling');
+      }
       
       const success = await setupPeerConnection();
       if (!success) return;
@@ -299,6 +317,12 @@ const WebRTCCall = ({ isCallEnabled, onCallStatusChange }) => {
     setIsSpeakerOn(!isSpeakerOn);
   };
 
+  // Update local and external status together
+  const updateCallStatus = (newStatus) => {
+    setCallStatus(newStatus);
+    onCallStatusChange(newStatus);
+  };
+  
   // Render different UI based on call status
   const renderCallContent = () => {
     switch (callStatus) {
@@ -346,6 +370,7 @@ const WebRTCCall = ({ isCallEnabled, onCallStatusChange }) => {
                 streamURL={remoteStream.toURL()}
                 style={styles.remoteVideo}
                 objectFit="cover"
+                zOrder={1}
               />
             )}
             {localStream && (
@@ -353,6 +378,7 @@ const WebRTCCall = ({ isCallEnabled, onCallStatusChange }) => {
                 streamURL={localStream.toURL()}
                 style={styles.localVideo}
                 objectFit="cover"
+                zOrder={2}
               />
             )}
             <View style={styles.callControls}>

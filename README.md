@@ -1,16 +1,20 @@
 # Bill's Phone - Kiosk App
 
-A dedicated kiosk-mode WebRTC calling app for Bill, an individual with disabilities. This app is specifically designed to provide simple, accessible video calling functionality through a WebRTC implementation.
+A dedicated kiosk-mode WebRTC calling app for Bill, an individual with disabilities. This app is specifically designed to provide simple, accessible video calling functionality through a WebRTC implementation with an intuitive timeline-based UI that visually represents the time of day.
 
 ## Current Implementation Status
 
 - ✅ Basic UI with accessibility-focused design
+- ✅ Enhanced UI with timeline visualization for time of day
+- ✅ Landscape orientation optimization
 - ✅ Time-based calling availability (5PM-10PM EST)
 - ✅ Call rate limiting (once per hour) 
 - ✅ Status indicators and clear visual feedback
 - ✅ App resolves compatibility issues with iOS 18.5
+- ✅ Working signaling server implementation
 - ✅ Simulation mode for testing app flow without WebRTC
-- ⏳ WebRTC implementation in development
+- ⏳ Complete WebRTC integration with main app UI
+- ⏳ Profile images for contacts
 - ⏳ Call receiving functionality (ready for next developer)
 
 ## Features
@@ -27,49 +31,103 @@ A dedicated kiosk-mode WebRTC calling app for Bill, an individual with disabilit
 
 ## Development Setup
 
-### Development Testing Workflow
+### Complete Testing Workflow
 
-1. **Start the Signaling Server:**
-   ```
-   docker build -t bills-signaling-server .
-   docker run -p 3000:3000 --name bills-server bills-signaling-server
-   ```
+#### 1. Start the Signaling Server
 
-2. **Testing App Modes:**
+The signaling server handles WebRTC connection setup between devices:
 
-   a. **Simulation Mode** (Works in Expo Go, no WebRTC):
-   ```
-   npm start
-   ```
-   
-   b. **WebRTC Test Environment** (For WebRTC connection testing):
-   ```
-   cd web-tester
-   npx http-server -p 8080
-   ```
-   
-   c. **Development Build** (Required for WebRTC on iOS):
-   ```
-   # Requires an Apple Developer account ($99/year)
-   npm install -g eas-cli
-   eas login
-   eas build:configure
-   eas build --profile development --platform ios
-   ```
+```bash
+# Build and run the Docker container
+docker build -t bills-signaling-server .
+docker run -p 3000:3000 --name bills-server bills-signaling-server
+```
 
-3. **Testing Between Two Devices:**
-   - For simulation testing: Use Expo Go on both devices
-   - For WebRTC testing: Use the web tester or EAS development build
-   - Both devices must be on the same network
-   - Update the server URL to use your computer's IP address
-   - Test calling in both directions
+Or run it directly:
 
-### Testing on iPhone
+```bash
+npm install
+node server.js
+```
 
-1. Download the Expo Go app from the App Store
-2. Make sure your iPhone is on the same network as your development machine
-3. Scan the QR code shown in the terminal or visit the URL
-4. The app will load on your iPhone
+**Important:** Note your computer's IP address (use `ipconfig` on Windows) to configure the client apps. The signaling server runs on port 3000 by default.
+
+#### 2. Configure Server URL
+
+Before testing, update the server URL in the WebRTC components:
+
+1. Open `components/WebRTCTest.js`
+2. Change line 20: `const SIGNALING_SERVER_URL = 'http://YOUR_SERVER:3000';`
+3. Replace `YOUR_SERVER` with your computer's actual IP address
+
+#### 3. Testing App Modes
+
+a. **Simulation Mode** (Works in Expo Go, no WebRTC):
+```bash
+npx expo start
+```
+
+This mode allows testing the UI flow but doesn't include actual WebRTC functionality.
+
+b. **WebRTC Test Environment**:
+```bash
+cd web-tester
+npx http-server -p 8080
+```
+
+c. **Development Build with WebRTC** (Requires Apple Developer Account):
+```bash
+# Install EAS CLI if not already installed
+npm install -g eas-cli
+
+# Log in to your Expo account
+eas login
+
+# Configure the project (only needed once)
+eas build:configure --platform ios
+
+# Create a development build
+eas build --profile development --platform ios
+```
+
+#### 4. Testing Between Devices
+
+- Both devices must be on the same network
+- Ensure the signaling server is running and accessible
+- Register devices with different IDs (e.g., "bill" and "caller")
+- For simulation: Use Expo Go (no real WebRTC)
+- For WebRTC: Use development build on iPhone or web tester
+- Test calling in both directions
+
+## Testing on Bill's iPhone
+
+### Option 1: Simulation Mode (Expo Go)
+
+This approach is quick but won't include WebRTC functionality:
+
+1. Install the Expo Go app from the App Store on Bill's iPhone
+2. Make sure the iPhone is on the same network as your development machine
+3. Run `npx expo start` on your development machine
+4. Scan the QR code with Bill's iPhone camera
+5. The app will open in Expo Go with the timeline UI but no actual calling features
+
+### Option 2: Development Build (Full Functionality)
+
+This approach provides the complete experience with WebRTC:
+
+1. Run `eas build --profile development --platform ios`
+2. Follow the prompts to set up your Apple Developer account credentials
+3. Wait for the build to complete (10-15 minutes for first build)
+4. Scan the QR code provided by EAS to install the development build
+5. The app will include all native modules including WebRTC
+
+### Using the Development Build
+
+1. Before testing, ensure the signaling server is running
+2. Update the server URL in the WebRTC components with your computer's IP
+3. Run the app and test both incoming and outgoing calls
+4. Test the timeline visualization and time-based availability
+5. Verify that the app operates correctly in landscape mode
 
 ## Technical Architecture
 
@@ -86,46 +144,115 @@ The app currently includes:
 
 ### For Next Developer: WebRTC Implementation
 
-The WebRTC implementation should use these components:
+### Architecture Overview
 
-1. **Signaling Server**: Connect to the WebRTC signaling server at `http://YOUR_SERVER:3000`
-2. **Connection Persistence**: Implement automatic reconnection with exponential backoff
-3. **Device Authentication**: Register with a unique device ID for Bill's device
-4. **Call Flow**:
+The WebRTC implementation includes these components:
+
+1. **Signaling Server** (server.js):
+   - Handles device registration and message relay
+   - Socket.io for real-time connection
+   - Supports custom device IDs ("bill" and "caller")
+   - Already implemented but needs deployment
+
+2. **WebRTC Test Component** (components/WebRTCTest.js):
+   - Basic implementation for testing connections
+   - Needs to be integrated with main UI
+
+3. **WebRTC Call Component** (components/WebRTCCall.js):
+   - Integration point for the main app
+   - Needs to be completed with proper UI integration
+
+### Key Tasks Remaining
+
+1. **Complete the WebRTCCall.js Component**:
+   - Integrate with the timeline UI in App.js
+   - Add proper call screens with accept/decline buttons
+   - Implement haptic feedback for incoming calls
+   - Handle network interruptions gracefully
+
+2. **Add Profile Images**:
+   - Replace the generic call button with contact images
+   - Add profile images to the `assets` folder
+   - Implement the white outline animation effect
+
+3. **Call Flow Integration**:
    - Incoming: Trusted Contact → Signaling Server → Bill's iPhone → Accept/Decline
    - Outgoing: Bill's iPhone → Signaling Server → Trusted Contact → Accept/Decline
+   - Call state management (incoming, outgoing, connected, ended)
 
-### Key Components to Develop
+4. **Deployment Configuration**:
+   - Configure the signaling server for production
+   - Set up the companion app for trusted contacts
+   - Update server URLs for production environment
 
-- **WebRTCCall.js**: Create or update this component for WebRTC implementation
-- **Call UI**: Implement calling screens with simple accept/decline buttons
-- **Call State Management**: Handle call states (incoming, outgoing, connected, ended)
+## Deploying to Bill's iPhone for Kiosk Use
 
-## Deploying to iPhone for Kiosk Use
+### Production Deployment Steps
 
-### Guided Access Setup (Recommended Method)
+1. **Signaling Server Setup**:
+   - Deploy the signaling server to a reliable host (Digital Ocean recommended)
+   - Configure environment variables for production mode
+   - Update the WebRTC components with the production server URL
 
-1. On the iPhone, go to Settings → Accessibility → Guided Access
-2. Turn on Guided Access and enable Accessibility Shortcut
-3. Set a secure passcode (should only be known to caregivers)
-4. Open the app
-5. Triple-click the home/side button to activate Guided Access
-6. Configure options:
-   - Circle and disable areas of the screen that shouldn't be touched
-   - Disable hardware buttons except those needed
-   - Enable auto-screen lock timeout (if needed)
-7. Tap "Start" in the top right
+2. **Final App Build**:
+   ```bash
+   # Create a production build
+   eas build --platform ios
+   
+   # Submit to App Store or TestFlight
+   eas submit -p ios
+   ```
 
-To exit: Triple-click home/side button and enter passcode.
+3. **App Store Distribution**:
+   - Complete the App Store Connect information
+   - Submit for App Review (mention accessibility purpose)
+   - Once approved, install from the App Store
+
+### Guided Access Setup (Kiosk Mode)
+
+1. **Configure Guided Access**:
+   - On Bill's iPhone, go to Settings → Accessibility → Guided Access
+   - Turn on Guided Access and enable Accessibility Shortcut
+   - Set a secure passcode (should only be known to caregivers)
+
+2. **Activate Kiosk Mode**:
+   - Open the Bill's Phone app
+   - Triple-click the home/side button to activate Guided Access
+   - Configure allowed areas and options:
+     - Allow touch on the call button area
+     - Disable hardware buttons except volume
+     - Disable auto-screen lock (ensure charger is connected)
+   - Tap "Start" in the top right
+
+3. **Exit Guided Access** (Caregiver only):
+   - Triple-click home/side button
+   - Enter the passcode
 
 ### Single App Mode (For More Permanent Installation)
 
-This requires Apple Developer Enterprise Program membership or Apple Configurator:
+For a more permanent kiosk setup, Single App Mode provides a fully managed solution:
 
-1. Use Apple Configurator 2 on a Mac
-2. Create a configuration profile with Single App Mode
-3. Configure accessibility settings within the profile
-4. Deploy to Bill's device
+**Requirements**:
+- Apple Developer Enterprise Program OR
+- Apple Configurator 2 (recommended for this use case)
+
+**Setup Steps**:
+1. Install Apple Configurator 2 on a Mac
+2. Connect Bill's iPhone to the Mac via USB
+3. Create a configuration profile with:
+   - Single App Mode restriction pointing to Bill's Phone app
+   - Auto-start after restart
+   - Disable all gestures except those needed for the app
+   - Configure auto-brightness and volume settings
+   - Enable automatic updates for the app
+4. Deploy the profile to Bill's iPhone
+5. The device will now permanently run in kiosk mode
+
+**Benefits**:
+- Auto-starts after power cycle
+- More restrictive than Guided Access
+- Can be updated remotely by the administrator
+- Prevents accidental exit
 
 ## Production Build
 
@@ -153,16 +280,39 @@ For production deployment:
    eas submit -p ios
    ```
 
-## Usage Instructions for Bill
+### Usage Instructions for Bill
 
-1. **Making a Call**: When the green "Call" button is available (evenings 5-10PM EST), tap it once to call the pre-configured trusted contact.
-2. **Receiving a Call**: When a call comes in, the phone will vibrate and display "Incoming Call" with two buttons:
-   - Tap the green "Answer" button to accept the call
-   - Tap the red "Decline" button to reject the call
-3. **During a Call**: 
-   - Tap "End Call" to hang up
-   - Use the "Mute" button to toggle microphone
+### Timeline UI
+
+The main screen shows a timeline visualization that helps Bill understand the time of day:
+
+1. **Timeline Visualization**:
+   - The horizontal lines at the top and bottom show the time of day (9AM-9PM)
+   - A glowing dot shows the current time position
+   - "Jogs" at the ends indicate sleep hours (before 9AM and after 9PM)
+
+2. **Making a Call**:
+   - When in the available calling hours (5PM-10PM EST), a call button appears
+   - The button will show the profile image of the trusted contact
+   - Tap once to initiate the call
+   - Only one call attempt per hour is allowed
+
+3. **Receiving a Call**:
+   - When a call comes in, the phone vibrates and displays an incoming call screen
+   - The caller's profile image is displayed prominently
+   - Tap the green "Answer" button to accept
+   - Tap the red "Decline" button to reject
+
+4. **During a Call**:
+   - The video of the caller fills most of the screen
+   - Tap "End Call" (red button) to hang up
+   - Use the "Mute" button to toggle the microphone
    - Use the "Speaker" button to toggle speaker mode
+
+5. **After Hours**:
+   - Outside of calling hours, the timeline still shows the time of day
+   - No call buttons are displayed
+   - The screen stays on at all times in kiosk mode
 
 ## Caregiver Instructions
 
@@ -183,22 +333,45 @@ For production deployment:
 
 ### WebRTC Implementation Status
 
-1. **Completed Steps**:
-   - ✅ Working signaling server implementation
-   - ✅ Simplified device registration with friendly IDs (bill/caller)
-   - ✅ Signal routing between devices verified
-   - ✅ Web-based WebRTC testing environment
+### Completed Components
 
-2. **Next Steps for WebRTC Integration**:
-   - Create EAS development build with WebRTC native modules
-   - Integrate the WebRTCTest.js component with the main app
-   - Update the app to use the signaling server
-   - Implement proper error handling for network issues
+1. **Signaling Server**:
+   - ✅ Complete implementation in server.js
+   - ✅ Socket.io for real-time communication
+   - ✅ Custom device ID registration ("bill"/"caller")
+   - ✅ Signal routing between devices
+   - ✅ Error handling and reconnection logic
 
-3. **Companion App Development**:
-   - Develop a simple caller app for Bill's contacts to use
-   - Test bidirectional calling with the same signaling server
-   - Ensure compatibility across iOS and Android if needed
+2. **WebRTC Testing**:
+   - ✅ Web-based testing environment in web-tester folder
+   - ✅ Basic WebRTCTest.js component for connection testing
+   - ✅ Docker configuration for the signaling server
+
+3. **Main App UI**:
+   - ✅ Timeline visualization with current time indicator
+   - ✅ Landscape mode optimization
+   - ✅ Time-based calling restrictions
+   - ✅ Rate limiting for calls
+
+### Deployment Progress
+
+1. **iOS Configuration**:
+   - ✅ EAS project configured
+   - ✅ Development build profile set up
+   - ✅ Apple Developer account linked
+
+### Next Development Tasks
+
+1. **WebRTC Integration**:
+   - Create and test the development build with WebRTC modules
+   - Integrate WebRTCCall.js with the main UI
+   - Implement call screens and transitions
+   - Add proper error recovery for network issues
+
+2. **Companion App**:
+   - Create a simplified caller app for trusted contacts
+   - Test bidirectional calling with the signaling server
+   - Ensure compatibility across platforms if needed
 
 4. **Accessibility & Reliability Features**:
    - Implement haptic feedback for call events
@@ -215,3 +388,7 @@ For production deployment:
 3. **Voice activation** for hands-free operation
 4. **Remote monitoring** capabilities for caregivers
 5. **Custom time window configuration** for call availability
+
+
+## NOTE:
+Consider adding automated recovery mechanisms for common edge cases like network interruptions during calls or unexpected WebRTC disconnections.

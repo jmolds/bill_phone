@@ -98,22 +98,22 @@
         
         <div class="connection-field">
             <label for="serverUrl">Signaling Server URL:</label>
-            <input type="text" id="serverUrl" value="http://localhost:3000">
+            <input type="text" id="serverUrl" value="http://143.198.180.248:3000">
         </div>
         
         <div class="connection-field">
             <label for="deviceRole">Select Role:</label>
             <select id="deviceRole" onchange="updateDeviceId()">
-                <option value="bill">Bill's Phone</option>
-                <option value="caller">Caller</option>
+                <option value="bills-iphone">Bill's Phone</option>
+                <option value="family-caller">Family Caller</option>
             </select>
         </div>
         
         <div class="connection-field">
             <label for="targetId">Target to Call:</label>
             <select id="targetId">
-                <option value="bill">Bill's Phone</option>
-                <option value="caller">Caller</option>
+                <option value="bills-iphone">Bill's Phone</option>
+                <option value="family-caller">Family Caller</option>
             </select>
         </div>
         
@@ -231,10 +231,10 @@
             
             // Update target dropdown to exclude my role
             targetSelect.innerHTML = '';
-            if (role === 'bill') {
-                targetSelect.innerHTML = '<option value="caller">Caller</option>';
+            if (role === 'bills-iphone') {
+                targetSelect.innerHTML = '<option value="family-caller">Family Caller</option>';
             } else {
-                targetSelect.innerHTML = '<option value="bill">Bill\'s Phone</option>';
+                targetSelect.innerHTML = '<option value="bills-iphone">Bill\'s Phone</option>';
             }
             
             log(`Role changed to: ${role}`);
