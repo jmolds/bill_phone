@@ -232,6 +232,111 @@ io.on('connection', (socket) => {
   });
 });
 
+// --- PostgreSQL Integration ---
+const { Pool } = require('pg');
+const { v4: uuidv4 } = require('uuid');
+
+const dbPool = new Pool({
+  host: process.env.POSTGRES_HOST || 'localhost',
+  port: process.env.POSTGRES_PORT || 5432,
+  database: process.env.POSTGRES_DB || 'billphone',
+  user: process.env.POSTGRES_USER || 'billuser',
+  password: process.env.POSTGRES_PASSWORD || 'secretpassword',
+  max: 5,
+});
+
+// Ensure family_users table exists
+(async () => {
+  try {
+    await dbPool.query(`
+      CREATE TABLE IF NOT EXISTS family_users (
+        id UUID PRIMARY KEY,
+        name TEXT NOT NULL,
+        picture_url TEXT,
+        email TEXT UNIQUE NOT NULL,
+        availability JSONB,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    logger.info('Ensured family_users table exists');
+  } catch (err) {
+    logger.error('Error ensuring family_users table: ' + err.message);
+  }
+})();
+
+// --- Family User API Endpoints ---
+// Create or update a family user profile
+app.post('/family-users', async (req, res) => {
+  const { id, name, picture_url, email, availability } = req.body;
+  if (!email || !name) {
+    return res.status(400).json({ error: 'Missing required fields: email, name' });
+  }
+  try {
+    // Upsert by email
+    const result = await dbPool.query(`
+      INSERT INTO family_users (id, name, picture_url, email, availability, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+      ON CONFLICT (email) DO UPDATE SET
+        name = EXCLUDED.name,
+        picture_url = EXCLUDED.picture_url,
+        availability = EXCLUDED.availability,
+        updated_at = NOW()
+      RETURNING *;
+    `, [id || uuidv4(), name, picture_url, email, availability]);
+    res.json(result.rows[0]);
+  } catch (err) {
+    logger.error('POST /family-users: ' + err.message);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// List all family users
+app.get('/family-users', async (req, res) => {
+  try {
+    const result = await dbPool.query('SELECT * FROM family_users ORDER BY name ASC;');
+    res.json(result.rows);
+  } catch (err) {
+    logger.error('GET /family-users: ' + err.message);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Get a single family user by id
+app.get('/family-users/:id', async (req, res) => {
+  try {
+    const result = await dbPool.query('SELECT * FROM family_users WHERE id = $1;', [req.params.id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    logger.error('GET /family-users/:id: ' + err.message);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Update availability for a family user
+app.patch('/family-users/:id/availability', async (req, res) => {
+  const { availability } = req.body;
+  if (!availability) {
+    return res.status(400).json({ error: 'Missing availability' });
+  }
+  try {
+    const result = await dbPool.query(
+      'UPDATE family_users SET availability = $1, updated_at = NOW() WHERE id = $2 RETURNING *;',
+      [availability, req.params.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    logger.error('PATCH /family-users/:id/availability: ' + err.message);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
 // API routes
 app.get('/', (req, res) => {
   res.json({

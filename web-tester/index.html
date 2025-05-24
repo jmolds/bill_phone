@@ -130,7 +130,35 @@
         
         <button id="callButton" class="button call-button">Start Call</button>
         <button id="endButton" class="button end-button" style="display: none;">End Call</button>
-        
+
+        <!-- --- Family User Profile API Tester --- -->
+        <hr style="margin:32px 0; border:1px solid #444;">
+        <div class="profile-api-section">
+            <h2>Family User Profile API Tester</h2>
+            <form id="profileForm" style="background:#222;padding:16px;border-radius:10px;margin-bottom:16px;">
+                <label>Name:<br><input type="text" id="profileName" required></label><br><br>
+                <label>Email:<br><input type="email" id="profileEmail" required></label><br><br>
+                <label>Picture:<br><input type="file" id="profilePic" accept="image/*"></label><br>
+                <img id="profilePicPreview" src="" alt="Preview" style="display:none;max-width:100px;margin:8px 0;"/>
+                <br>
+                <label>Hours of the Week:</label>
+                <div id="hoursGrid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:2px;margin:8px 0;"></div>
+                <small>Click cells to toggle availability. Rows = hours (6am-10pm), Cols = Sun-Sat.</small>
+                <br><br>
+                <button type="submit" class="button call-button">Create/Update Profile</button>
+            </form>
+            <button id="fetchUsersBtn" class="button">Fetch All Family Users</button>
+            <input type="text" id="fetchUserId" placeholder="User ID" style="width:200px;">
+            <button id="fetchUserBtn" class="button">Fetch User by ID</button>
+            <div id="usersList" style="margin-top:16px;"></div>
+        </div>
+        <!-- --- End Family User Profile API Tester --- -->
+
+        <!-- React-based Profile Tester (built with main.jsx) -->
+        <div id="react-root"></div>
+        <!-- In production, build main.jsx to main.js and include below: -->
+        <script src="main.js"></script>
+
         <div class="log-container" id="logContainer">
             <div>Logs will appear here...</div>
         </div>
@@ -335,13 +363,40 @@
             log('Setting up peer connection');
             
             try {
-                // Get user media
-                localStream = await navigator.mediaDevices.getUserMedia({
-                    audio: true,
-                    video: true
-                });
-                
-                localVideo.srcObject = localStream;
+                // Get user media with explicit error handling
+                try {
+                    log('Requesting camera and microphone permissions...');
+                    localStream = await navigator.mediaDevices.getUserMedia({
+                        audio: true,
+                        video: true
+                    });
+                    
+                    log(`Media access granted: ${localStream.getTracks().length} tracks`);
+                    // Log each track type
+                    localStream.getTracks().forEach(track => {
+                        log(`Local track: ${track.kind} (${track.readyState}) - label: ${track.label}`);
+                    });
+                    
+                    localVideo.srcObject = localStream;
+                    log('Local video element setup complete');
+                    
+                    // Add immediate visual feedback
+                    localVideo.onloadedmetadata = () => {
+                        log('Local video metadata loaded');
+                    };
+                    
+                    localVideo.onplay = () => {
+                        log('Local video playing');
+                    };
+                    
+                    localVideo.onerror = (e) => {
+                        log(`Local video error: ${e}`);
+                    };
+                } catch (error) {
+                    log(`Media access ERROR: ${error.name} - ${error.message}`);
+                    alert(`Could not access camera or microphone: ${error.message}\n\nPlease ensure you've granted necessary permissions.`);
+                    return false;
+                }
                 
                 // Create peer connection
                 const configuration = {
@@ -358,12 +413,41 @@
                     peerConnection.addTrack(track, localStream);
                 });
                 
-                // Handle remote stream
+                // Handle remote stream with detailed logging
                 peerConnection.ontrack = (event) => {
-                    log('Received remote track');
+                    log(`Received remote track: ${event.track.kind} (${event.track.readyState})`);
+                    log(`Track settings: ${JSON.stringify(event.track.getSettings())}`);
+                    
                     if (event.streams && event.streams[0]) {
                         remoteStream = event.streams[0];
+                        log(`Got remote stream with ${remoteStream.getTracks().length} tracks`);
+                        remoteStream.getTracks().forEach(track => {
+                            log(`Remote track: ${track.kind} (${track.readyState}) - active: ${track.enabled}`);
+                        });
+                        
                         remoteVideo.srcObject = remoteStream;
+                        log('Remote video element srcObject set');
+                        
+                        // Setup additional event handlers
+                        remoteVideo.onloadedmetadata = () => {
+                            log('Remote video metadata loaded');
+                            // Try to play the video
+                            remoteVideo.play().then(() => {
+                                log('Remote video playing successfully');
+                            }).catch(err => {
+                                log(`Remote video play failed: ${err}`);
+                            });
+                        };
+                        
+                        remoteVideo.onplay = () => {
+                            log('Remote video playing');
+                        };
+                        
+                        remoteVideo.onerror = (e) => {
+                            log(`Remote video error: ${e}`);
+                        };
+                    } else {
+                        log('WARNING: Received track but no streams array');
                     }
                 };
                 
@@ -485,14 +569,26 @@
             
             // Stop local stream
             if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
+                localStream.getTracks().forEach(track => {
+                    log(`Stopping local track: ${track.kind}`);
+                    track.stop();
+                });
                 localStream = null;
                 localVideo.srcObject = null;
             }
             
             // Clear remote stream
-            remoteStream = null;
-            remoteVideo.srcObject = null;
+            if (remoteStream) {
+                remoteStream.getTracks().forEach(track => {
+                    log(`Stopping remote track: ${track.kind}`);
+                    track.stop();
+                });
+                remoteStream = null;
+                remoteVideo.srcObject = null;
+            } else {
+                log('No remote stream to clean up');
+                remoteVideo.srcObject = null;
+            }
         }
 
         // Initialize

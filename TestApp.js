@@ -1,39 +1,226 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Text, TouchableOpacity, StatusBar, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, StatusBar, Animated, Dimensions, Image, Alert } from 'react-native';
+import * as ScreenOrientation from 'expo-screen-orientation';
+
+// Import the Contact component if available, or create a simulation version
+import { createPlaceholderImage } from './components/temp-image-solution';
+
+// Simulation Contact component
+const SimContact = ({ name, imageSource, onPress, disabled = false, size = 220, animationEnabled = true }) => {
+  // Animation for the pulsing white outline effect
+  const [pulseAnim] = useState(new Animated.Value(1));
+  
+  // Set up the pulsing animation when component mounts
+  useEffect(() => {
+    if (animationEnabled) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.2,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 1000,
+            useNativeDriver: true,
+          })
+        ])
+      ).start();
+    }
+    return () => {
+      pulseAnim.stopAnimation();
+    };
+  }, [animationEnabled]);
+  
+  // Calculate dimensions based on the provided size
+  const dimensions = {
+    container: {
+      width: size,
+      height: size,
+      borderRadius: size / 2,
+    },
+    image: {
+      width: size - 20,
+      height: size - 20,
+      borderRadius: (size - 20) / 2,
+    }
+  };
+  
+  // Calculate the animated scale for the white outline
+  const outlineScale = animationEnabled ? pulseAnim : 1;
+  
+  return (
+    <TouchableOpacity
+      style={[styles.contactContainer, dimensions.container, disabled && styles.disabledContainer]}
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.7}
+    >
+      {/* Animated white outline */}
+      <Animated.View 
+        style={[
+          styles.outlineEffect,
+          dimensions.container,
+          {
+            transform: [{ scale: outlineScale }],
+            opacity: disabled ? 0.3 : 0.9
+          }
+        ]}
+      />
+      
+      {/* Profile circle with name */}
+      <View style={[styles.contactImage, dimensions.image, disabled && styles.disabledImage]}>
+        <Text style={styles.contactInitial}>{name.charAt(0).toUpperCase()}</Text>
+      </View>
+      
+      {/* Name label */}
+      <Text style={[styles.contactName, disabled && styles.disabledText]}>
+        {name}
+      </Text>
+    </TouchableOpacity>
+  );
+};
+
+// Create a simulation contact
+const defaultContact = {
+  id: 'family-caller',
+  name: 'Family',
+  deviceId: 'family-caller',
+};
 
 /**
  * Test version of Bill's Phone App with call simulation
  * 
- * This version simulates call behavior without using WebRTC,
- * which requires a development build to work with native modules.
+ * This version simulates the production app's UI and behavior without WebRTC,
+ * allowing for faster UI development using Expo Go without rebuilding.
  */
 const TestApp = () => {
-  // State for call simulation
-  const [deviceId, setDeviceId] = useState('');
-  const [callStatus, setCallStatus] = useState('idle'); // idle, calling, connected, ended
+  // State management (matches production App.js)
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [isCallTime, setIsCallTime] = useState(false);
+  const [canCall, setCanCall] = useState(false); // Based on hourly limit
+  const [lastCallAttempt, setLastCallAttempt] = useState(null);
+  const [callStatus, setCallStatus] = useState('idle'); // idle, calling, incoming, connected
+  
+  // Animation values for timeline
+  const timelinePosition = useState(new Animated.Value(0))[0];
+  const dotOpacity = useState(new Animated.Value(1))[0];
+  
+  // Simulation state
   const [connectedTime, setConnectedTime] = useState(0);
   const [callTimer, setCallTimer] = useState(null);
-
-  // Generate a simple device ID on startup
+  
+  // Force landscape orientation
   useEffect(() => {
-    // Generate random device ID to simulate multiple devices
-    const id = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    setDeviceId(id);
+    const lockOrientation = async () => {
+      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+    };
+    lockOrientation();
   }, []);
+
+  // Check if current time is within allowed calling hours and update timeline position
+  // Currently set to 5PM-10PM EST as per requirements
+  useEffect(() => {
+    const checkCallAvailability = () => {
+      const now = new Date();
+      setCurrentTime(now);
+      
+      // Check if current hour is between 5PM-10PM (17-22)
+      const hour = now.getHours();
+      const isWithinCallHours = hour >= 17 && hour <= 22;
+      setIsCallTime(isWithinCallHours);
+      
+      // Check if an hour has passed since last call attempt
+      if (lastCallAttempt) {
+        const timeSinceLastCall = now.getTime() - lastCallAttempt.getTime();
+        const oneHourInMs = 60 * 60 * 1000;
+        setCanCall(timeSinceLastCall > oneHourInMs);
+      } else {
+        setCanCall(true);
+      }
+      
+      // Calculate position on timeline (9AM-9PM span)
+      const minutes = now.getHours() * 60 + now.getMinutes();
+      const dayStart = 9 * 60; // 9AM in minutes
+      const dayEnd = 21 * 60; // 9PM in minutes
+      const totalDayMinutes = dayEnd - dayStart;
+      
+      // Calculate position percentage (0.0 to 1.0)
+      let positionPercent;
+      
+      if (minutes < dayStart) {
+        // Before 9AM, in the "jog down" area
+        positionPercent = 0;
+      } else if (minutes > dayEnd) {
+        // After 9PM, in the "jog down" area
+        positionPercent = 1;
+      } else {
+        // Between 9AM-9PM, on the main timeline
+        positionPercent = (minutes - dayStart) / totalDayMinutes;
+      }
+      
+      // Update timeline position animation
+      Animated.timing(timelinePosition, {
+        toValue: positionPercent,
+        duration: 500,
+        useNativeDriver: false
+      }).start();
+      
+      // Create blinking effect
+      Animated.sequence([
+        Animated.timing(dotOpacity, {
+          toValue: 0.4,
+          duration: 1000,
+          useNativeDriver: false
+        }),
+        Animated.timing(dotOpacity, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: false
+        })
+      ]).start();
+    };
+    
+    // Check immediately and then every minute
+    checkCallAvailability();
+    const interval = setInterval(checkCallAvailability, 60000);
+    
+    return () => clearInterval(interval);
+  }, [lastCallAttempt, timelinePosition, dotOpacity]);
+
+  // Format time for display (12-hour format with AM/PM)
+  const formatTime = (date) => {
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const formattedHours = hours % 12 || 12;
+    const formattedMinutes = minutes < 10 ? `0${minutes}` : minutes;
+    return `${formattedHours}:${formattedMinutes} ${ampm}`;
+  };
+
+  // Format seconds to MM:SS for call duration
+  const formatCallTime = (seconds) => {
+    const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const secs = (seconds % 60).toString().padStart(2, '0');
+    return `${mins}:${secs}`;
+  };
 
   // Handle call timer when connected
   useEffect(() => {
-    if (callStatus === 'connected' && !callTimer) {
-      // Start timer when call is connected
+    if (callStatus === 'connected') {
+      // Start call timer
       const timer = setInterval(() => {
         setConnectedTime(prev => prev + 1);
       }, 1000);
       setCallTimer(timer);
-    } else if (callStatus !== 'connected' && callTimer) {
-      // Clear timer when call ends
-      clearInterval(callTimer);
-      setCallTimer(null);
-      setConnectedTime(0);
+    } else {
+      // Clear timer if not connected
+      if (callTimer) {
+        clearInterval(callTimer);
+        setCallTimer(null);
+        setConnectedTime(0);
+      }
     }
 
     return () => {
@@ -41,37 +228,55 @@ const TestApp = () => {
         clearInterval(callTimer);
       }
     };
-  }, [callStatus, callTimer]);
+  }, [callStatus]);
 
-  // Format time for display (mm:ss)
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  // Simulate making a call
-  const startCall = () => {
+  // Handle call button press - matches production behavior
+  const handleCallPress = () => {
+    // Record the call attempt time to enforce the hourly limit
+    setLastCallAttempt(new Date());
+    setCanCall(false);
+    
+    // Log the call attempt
+    console.log('Call initiated at', new Date().toLocaleTimeString());
+    
+    // Update call status to initiate simulated call
     setCallStatus('calling');
-    
-    // Simulate connection delay
-    Alert.alert('Calling', 'Connecting to other device...');
-    
-    // Simulate connection establishment after delay
-    setTimeout(() => {
-      setCallStatus('connected');
-      Alert.alert('Connected', 'Call connected successfully!');
-    }, 2000);
+    setTimeout(() => Alert.alert('Simulation', 'Call initiated in simulation mode'), 100);
   };
 
-  // Simulate ending a call
+  // End a call (simulation)
   const endCall = () => {
     setCallStatus('ended');
-    setTimeout(() => {
-      setCallStatus('idle');
-    }, 1000);
-    Alert.alert('Call Ended', 'Call has been disconnected');
+    setTimeout(() => setCallStatus('idle'), 2000);
   };
+
+  // Accept an incoming call (simulation for future use)
+  const acceptCall = () => {
+    setCallStatus('connected');
+  };
+
+  // Simulation of auto-connection after 3 seconds of 'calling'
+  useEffect(() => {
+    if (callStatus === 'calling') {
+      const timeout = setTimeout(() => {
+        setCallStatus('connected');
+        Alert.alert('Simulation', 'Call connected in simulation mode');
+      }, 3000);
+
+      return () => clearTimeout(timeout);
+    }
+  }, [callStatus]);
+  
+  // Calculate dot positions based on timeline position
+  const topDotPosition = timelinePosition.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['5%', '95%']
+  });
+  
+  const bottomDotPosition = timelinePosition.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['5%', '95%']
+  });
 
   return (
     <View style={styles.container}>

@@ -1,103 +1,139 @@
-# Bill's Phone - Kiosk App
+# Bill's Phone - WebRTC Communication App
 
-A dedicated kiosk-mode WebRTC calling app for Bill, an individual with disabilities. This app is specifically designed to provide simple, accessible video calling functionality through a WebRTC implementation with an intuitive timeline-based UI that visually represents the time of day.
+A dedicated WebRTC calling app for Bill, an individual with disabilities. This app is specifically designed to provide simple, accessible video calling functionality through a WebRTC implementation with a focus on ease of use and reliability.
 
 ## Current Implementation Status
 
+---
+
+## Upcoming Development Roadmap (PostgreSQL Family User Profiles)
+
+### 1. Docker & Database Integration
+- Use `docker-compose.yml` to run both the signaling server and a PostgreSQL database (`db` service).
+- Environment variables for DB connection are set in Compose and `.env` files.
+- Data persists in a Docker-managed volume.
+
+### 2. Server API Enhancements
+- Integrate `pg` and `uuid` libraries for PostgreSQL access.
+- On startup, ensure a `family_users` table exists with fields: `id`, `name`, `picture_url`, `email`, `availability`, `created_at`, `updated_at`.
+- REST API endpoints:
+  - `POST /family-users`: Create or update a family user profile.
+  - `GET /family-users`: List all family users.
+  - `GET /family-users/:id`: Get a single profile.
+  - `PATCH /family-users/:id/availability`: Update availability JSON.
+
+### 3. Web Tester Updates
+- Add UI for creating, editing, and deleting family user profiles.
+- Allow users to select/upload/crop a profile image (suggested: `react-easy-crop`).
+- Add a visual picker for "hours of the week" (suggested: grid or range picker, e.g., `react-big-calendar`).
+- Preview and edit all profile info before saving.
+- Use the new REST API endpoints for all CRUD operations.
+
+### 4. Library Installation Notes
+- Install new server dependencies: `pg`, `uuid` (`npm install pg uuid`).
+- For web tester: install UI/image/calendar libraries as needed (`npm install react-easy-crop react-big-calendar`).
+
+### 5. iPhone App (Future)
+- Update to use new REST API endpoints for user profiles and schedules.
+- Use `expo-image-picker` and a calendar/grid UI for profile setup.
+- Add local preview and editing before submitting to server.
+
+### 6. Testing & Deployment
+- Use `docker-compose up --build` to start both services.
+- Test API endpoints with Postman/curl and web tester.
+- Ensure profiles and hours persist and update correctly.
+- Document all new endpoints and data formats in the README.
+
+---
+
+### Core Features
 - ✅ Basic UI with accessibility-focused design
-- ✅ Enhanced UI with timeline visualization for time of day
-- ✅ Landscape orientation optimization
-- ✅ Time-based calling availability (5PM-10PM EST)
-- ✅ Call rate limiting (once per hour) 
-- ✅ Status indicators and clear visual feedback
-- ✅ App resolves compatibility issues with iOS 18.5
-- ✅ Working signaling server implementation
-- ✅ Simulation mode for testing app flow without WebRTC
-- ⏳ Complete WebRTC integration with main app UI
-- ⏳ Profile images for contacts
-- ⏳ Call receiving functionality (ready for next developer)
+- ✅ Deployed signaling server on Digital Ocean (http://143.198.180.248:3000)
+- ✅ Working WebRTC connectivity between devices
+- ✅ Auto-answer functionality for Bill's phone
+- ✅ Speakerphone mode integration
+- ✅ Unified testing app with role selection
+- ✅ Clear role identification and switching UI
+- ✅ Detailed connection logging and troubleshooting
+- ✅ Log sharing functionality
+- ✅ TestFlight distribution for real device testing
 
-## Features
+### Recent Improvements (Build #7)
+- ✅ Auto-answer for incoming calls on Bill's phone
+- ✅ Speakerphone enabled by default
+- ✅ Prominent role selector with easy toggling
+- ✅ Fixed UI layout issues and overlapping elements
+- ✅ Improved device identification
+- ✅ Added version display for easier tracking
+- ✅ OTA update support via EAS Update
 
-- **Accessibility-Focused UI**: Large buttons, clear visuals, and simple interface
+## WebRTC Tester Features
+
+The current development is focused on the WebRTC Tester app (`WebRTCRoleTester.js`), which includes:
+
+- **Unified Role Selection**: Single app that can function as either Bill's phone or family caller
+- **Auto-Answer**: Automatically answers incoming calls when set as Bill's phone
+- **Speakerphone Integration**: Default speakerphone mode for better accessibility
+- **Connection Status**: Clear visual indicators of connection state
+- **Detailed Logging**: Comprehensive logging of connection events and media handling
+- **Debug Tools**: One-tap log sharing via email/messaging
+- **Visual Feedback**: Shows both local and remote video streams
+- **Network Resilience**: Reconnection handling and error recovery
+- **Prominent UI**: Clear interface with high contrast and readable text
+
+### Planned Features for Bill's Final App
+
+- **Simplified Interface**: Further streamlined UI designed specifically for Bill
 - **Kiosk Mode**: Locked interface using iOS Guided Access
-- **Time-Based Call Restriction**: Calling only available during evening hours (5PM-10PM EST)
+- **Time-Based Call Restriction**: Calling available during specified hours only
 - **Always-On Display**: Screen stays on at all times
 - **Simple One-Touch Calling**: Large call button for ease of use
-- **Restricted Calling**: Only calls to/from pre-configured trusted contact
-- **Network Status Monitoring**: Clear indication of connection status
-- **Auto-Recovery**: Reconnects automatically after network interruptions
-- **Haptic Feedback**: Vibration alerts for incoming calls and status changes
+- **Visual Schedule**: Timeline-based UI for time awareness
 
-## Development Setup
+## Development & Testing Setup
 
-### Complete Testing Workflow
+### Important Note for Developers
+The free Expo account has hit its build quota limit for May 2025. New builds can be created starting June 1, 2025. In the meantime, use EAS Update for JavaScript-only changes.
 
-#### 1. Start the Signaling Server
+### Current Deployment Setup
 
-The signaling server handles WebRTC connection setup between devices:
-
-```bash
-# Build and run the Docker container
-docker build -t bills-signaling-server .
-docker run -p 3000:3000 --name bills-server bills-signaling-server
+#### 1. Signaling Server
+The WebRTC signaling server is currently deployed on Digital Ocean at:
+```
+http://143.198.180.248:3000
 ```
 
-Or run it directly:
+This is already configured in the app and handles the connection between devices with the following device IDs:
+- Bill's Phone: `bills-iphone`
+- Family Caller: `family-caller`
 
+#### 2. Building & Testing
+
+**For JavaScript-Only Updates (No Build Quota Used):**
 ```bash
-npm install
-node server.js
+# Push updates to existing installed apps
+eas update --branch preview
 ```
 
-**Important:** Note your computer's IP address (use `ipconfig` on Windows) to configure the client apps. The signaling server runs on port 3000 by default.
-
-#### 2. Configure Server URL
-
-Before testing, update the server URL in the WebRTC components:
-
-1. Open `components/WebRTCTest.js`
-2. Change line 20: `const SIGNALING_SERVER_URL = 'http://YOUR_SERVER:3000';`
-3. Replace `YOUR_SERVER` with your computer's actual IP address
-
-#### 3. Testing App Modes
-
-a. **Simulation Mode** (Works in Expo Go, no WebRTC):
+**For Full Builds (After June 1, 2025):**
 ```bash
-npx expo start
+# Build for TestFlight distribution
+eas build --platform ios --profile preview
 ```
 
-This mode allows testing the UI flow but doesn't include actual WebRTC functionality.
-
-b. **WebRTC Test Environment**:
-```bash
-cd web-tester
-npx http-server -p 8080
-```
-
-c. **Development Build with WebRTC** (Requires Apple Developer Account):
-```bash
-# Install EAS CLI if not already installed
-npm install -g eas-cli
-
-# Log in to your Expo account
-eas login
-
-# Configure the project (only needed once)
-eas build:configure --platform ios
-
-# Create a development build
-eas build --profile development --platform ios
-```
-
-#### 4. Testing Between Devices
-
-- Both devices must be on the same network
-- Ensure the signaling server is running and accessible
-- Register devices with different IDs (e.g., "bill" and "caller")
-- For simulation: Use Expo Go (no real WebRTC)
-- For WebRTC: Use development build on iPhone or web tester
+**Testing on Devices:**
+- Ensure both test devices have the app installed via TestFlight
+- Set one device as "Bill's Phone" and the other as "Family Caller" using the role selector
 - Test calling in both directions
+- Verify auto-answer functionality on Bill's phone
+- Confirm speakerphone is working correctly
+
+### Troubleshooting
+
+- **WebRTC Connection Issues**: Check the signaling server is running and accessible
+- **Media Not Showing**: Review permissions and camera/microphone access
+- **Updates Not Applying**: Force close and reopen the app, or check build compatibility
+- **Log Sharing**: Use the "Share Logs" button to send diagnostic information
 
 ## Testing on Bill's iPhone
 
@@ -128,6 +164,7 @@ This approach provides the complete experience with WebRTC:
 3. Run the app and test both incoming and outgoing calls
 4. Test the timeline visualization and time-based availability
 5. Verify that the app operates correctly in landscape mode
+6. Test the profile image and animated outline effect
 
 ## Technical Architecture
 
@@ -151,8 +188,47 @@ The WebRTC implementation includes these components:
 1. **Signaling Server** (server.js):
    - Handles device registration and message relay
    - Socket.io for real-time connection
-   - Supports custom device IDs ("bill" and "caller")
-   - Already implemented but needs deployment
+   - Supports custom device IDs ("bills-iphone" and "family-caller")
+   - Deployed on Digital Ocean at http://143.198.180.248:3000
+
+## Next Development Steps
+
+### June 2025 Plan
+1. Create a dedicated UI specifically for Bill's phone
+   - Simplified interface with larger buttons
+   - High contrast colors and clear visual feedback
+   - Remove technical options/settings from Bill's version
+
+2. Split the codebase into two distinct apps:
+   - Bill's Phone: Minimal, guided interface with auto-answer
+   - Family Caller: More controls and feedback for family members
+
+3. Add scheduling functionality:
+   - Time-based availability (e.g., 5PM-10PM EST)
+   - Visual timeline representation for time awareness
+   - Clear feedback when outside call hours
+
+4. Enhance reliability:
+   - Automatic reconnection after network interruptions
+   - Persistent device registration with the signaling server
+   - Clear status indicators for connection state
+
+### Technical Debt & Future Improvements
+- Refactor WebRTC connection handling for better error recovery
+- Add unit tests for critical connection paths
+- Implement metrics collection for monitoring connection quality
+- Create a web dashboard for family members to check Bill's device status
+
+## File Structure
+
+### Key Files
+- `WebRTCRoleTester.js` - The main testing app that supports both roles
+- `index.js` - Main entry point that loads the appropriate component
+- `app.json` - Configuration for the Expo/React Native app
+- `eas.json` - EAS Build configuration for TestFlight distribution
+
+## Contact & Support
+For questions about this project, please contact the project maintainer.
 
 2. **WebRTC Test Component** (components/WebRTCTest.js):
    - Basic implementation for testing connections
@@ -189,24 +265,126 @@ The WebRTC implementation includes these components:
 
 ### Production Deployment Steps
 
-1. **Signaling Server Setup**:
-   - Deploy the signaling server to a reliable host (Digital Ocean recommended)
-   - Configure environment variables for production mode
-   - Update the WebRTC components with the production server URL
+1. **Signaling Server Setup on Digital Ocean**:
+   - The signaling server is deployed on a Digital Ocean Docker droplet
+   - Server URL: `http://143.198.180.248:3000`
+   - Device IDs: `bills-iphone` and `family-caller`
+
+   To rebuild or update the server:
+   ```bash
+   # SSH into the Digital Ocean droplet
+   ssh root@143.198.180.248
+
+   # Navigate to the project directory (or clone it if needed)
+   cd bill_phone
+   # If needed: git clone https://github.com/jmolds/bill_phone.git
+
+   # Pull latest changes if needed
+   git pull
+
+   # Stop and remove existing container if it exists
+   docker stop bills-server
+   docker rm bills-server
+
+   # Build the Docker image
+   docker build -t bills-signaling-server .
+
+   # Run the container with auto-restart
+   docker run -d -p 3000:3000 --restart=always --name bills-server bills-signaling-server
+
+   # Verify the container is running
+   docker ps
+   docker logs bills-server
+   ```
+
+   **Firewall Configuration**:
+   - Ensure port 3000 is open for WebRTC signaling
+   ```bash
+   ufw allow 3000/tcp
+   ```
 
 2. **Final App Build**:
    ```bash
+   # Install EAS CLI if not already installed
+   npm install -g eas-cli
+   
+   # Login to your Expo account
+   eas login
+   
+   # Configure the project (only needed once)
+   eas build:configure --platform ios
+   
    # Create a production build
    eas build --platform ios
+   
+   # For development/testing builds with WebRTC functionality
+   eas build --profile development --platform ios
    
    # Submit to App Store or TestFlight
    eas submit -p ios
    ```
 
-3. **App Store Distribution**:
-   - Complete the App Store Connect information
-   - Submit for App Review (mention accessibility purpose)
-   - Once approved, install from the App Store
+3. **TestFlight Distribution**:
+   ```bash
+   # Build for TestFlight
+   eas build --platform ios --profile production
+   
+   # Submit to TestFlight
+   eas submit -p ios
+   ```
+   - Add testers in App Store Connect → TestFlight → External Testing
+   - Testers receive an email with instructions to install TestFlight
+   - NOTE: TestFlight builds expire after 90 days
+
+4. **Long-Term Deployment Options**:
+   
+   **Option A: Regular TestFlight Updates**
+   - Create a calendar reminder to rebuild every 80-85 days
+   - Submit new builds to TestFlight before expiration
+   - Pros: Simple, no App Store review needed for updates
+   - Cons: Requires regular maintenance, builds expire
+   
+   **Option B: App Store Distribution**
+   - Complete App Store metadata in App Store Connect
+   - Submit for formal App Review (mention accessibility purpose)
+   - Once approved, app can be installed from the App Store
+   - Pros: Permanent installation, no expirations
+   - Cons: Full App Store review required, may need adjustments
+   
+   **Option C: Enterprise Distribution**
+   - Requires Apple Enterprise Developer Program ($299/year)
+   - Create in-house distribution profile
+   - Distribute directly via MDM or web link
+   - Pros: No App Store, no expirations, full control
+   - Cons: More expensive, requires enterprise account
+
+## Web Tester and Device ID Configuration
+
+The system uses specific device IDs to ensure consistent and secure connections:
+
+1. **Device IDs**:
+   - Bill's iPhone: `bills-iphone`
+   - Family Caller: `family-caller`
+
+2. **Web Tester Setup**:
+   - Located in the `web-tester` directory
+   - Configured to connect to `http://143.198.180.248:3000`
+   - Run locally with: `npx http-server -p 8080`
+   - Or open the HTML file directly in a browser
+
+3. **Testing Procedure**:
+   - Open web tester and select the "Family Caller" role
+   - Connect to the signaling server
+   - On the iPhone, ensure the app is running and connected
+   - Initiate a call from either direction
+   - Verify audio and video quality
+   - Test call acceptance, rejection, and ending
+
+4. **Troubleshooting**:
+   - If devices can't connect, check server logs: `docker logs bills-server`
+   - Ensure port 3000 is open on the firewall
+   - Verify both devices are online and registered with the correct IDs
+   - Camera and microphone permissions must be granted in both environments
 
 ### Guided Access Setup (Kiosk Mode)
 
