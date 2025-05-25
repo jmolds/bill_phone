@@ -1,3 +1,7 @@
+// TODO: Future: Support multi-person calls with Bill if availabilities align
+// TODO: Future: Trigger push notifications for available users to join group calls
+// TODO: Future: Support multi-person calls with Bill if availabilities align
+// TODO: Future: Trigger push notifications for available users to join group calls
 import React, { useState, useCallback, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import Cropper from 'react-easy-crop';
@@ -175,19 +179,25 @@ function App() {
     }
     setLoading(false);
   }
-      setCroppedImage('');
-      setAvailability(() => { const obj = {}; DAYS.forEach(day => obj[day] = []); return obj; });
-      setEditUserId(null);
-      fetchUsers();
-    } catch (err) {
-      setError('Failed to save profile');
-    }
-    setLoading(false);
-  }
+
+  // Selected user for top profiles
+  const [selectedProfileId, setSelectedProfileId] = useState(null);
 
   return (
-    <div style={{ maxWidth: 600, margin: '0 auto', color: 'black', background: 'white', padding: 20, borderRadius: 10 }}>
-      <h2>Family User Profile (React Demo)</h2>
+    <div style={{ maxWidth: 700, margin: '0 auto', color: 'black', background: 'white', padding: 20, borderRadius: 10 }}>
+      {/* Profiles section at the top */}
+      <h2 style={{marginBottom: 12}}>Profiles</h2>
+      <div style={{display:'flex',gap:18,marginBottom:32,overflowX:'auto',paddingBottom:8}}>
+        {users.map(user => (
+          <div key={user.id}
+               onClick={() => setSelectedProfileId(user.id)}
+               style={{cursor:'pointer',textAlign:'center',border:selectedProfileId===user.id?'2px solid #1976d2':'1px solid #ccc',borderRadius:10,padding:10,background:selectedProfileId===user.id?'#e3f2fd':'#fafafa',minWidth:90}}>
+            <img src={user.picture_url||''} alt={user.name} style={{width:60,height:60,borderRadius:'50%',objectFit:'cover',marginBottom:6,background:'#eee'}} />
+            <div style={{fontWeight:'bold',fontSize:15}}>{user.name}</div>
+          </div>
+        ))}
+      </div>
+      <h2 style={{marginBottom: 12, marginTop: 0}}>Manage Family Users</h2>
       <form onSubmit={handleSubmit}>
         <div style={{marginBottom: 16}}>
           <label htmlFor="profile-name">Name:</label><br />

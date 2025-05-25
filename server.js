@@ -3,6 +3,10 @@
  * Modern implementation with security best practices
  */
 
+// TODO: Future: Add support for multi-person calls with Bill (group calls)
+// TODO: Future: Implement push notification logic for available users
+// TODO: Future: Add support for multi-person calls with Bill (group calls)
+// TODO: Future: Implement push notification logic for available users
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -37,7 +41,7 @@ const app = express();
 app.use(helmet());
 app.use(cors({
   origin: ALLOWED_ORIGINS,
-  methods: ['GET', 'POST', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   credentials: true
 }));
 app.use(express.json());

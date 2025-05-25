@@ -39072,6 +39072,7 @@
     const [users, setUsers] = (0, import_react14.useState)([]);
     const [loading, setLoading] = (0, import_react14.useState)(false);
     const [error, setError] = (0, import_react14.useState)("");
+    const [editUserId, setEditUserId] = (0, import_react14.useState)(null);
     const fetchUsers = (0, import_react14.useCallback)(async () => {
       setLoading(true);
       setError("");
@@ -39119,20 +39120,60 @@
       setLoading(true);
       setError("");
       try {
-        const resp = await axios_default.post(`${API_BASE}/family-users`, {
-          name,
-          picture_url: croppedImage,
-          availability
-        });
-        alert(`Profile saved! Name: ${resp.data.name}`);
+        let resp;
+        if (editUserId) {
+          resp = await axios_default.patch(`${API_BASE}/family-users/${editUserId}`, {
+            name,
+            picture_url: croppedImage,
+            availability
+          });
+          alert(`Profile updated! Name: ${resp.data.name}`);
+        } else {
+          resp = await axios_default.post(`${API_BASE}/family-users`, {
+            name,
+            picture_url: croppedImage,
+            availability
+          });
+          alert(`Profile saved! Name: ${resp.data.name}`);
+        }
         setName("");
         setPicture(null);
         setPictureUrl("");
         setCroppedImage("");
-        setAvailability({});
+        setAvailability(() => {
+          const obj = {};
+          DAYS.forEach((day2) => obj[day2] = []);
+          return obj;
+        });
+        setEditUserId(null);
         fetchUsers();
       } catch (err) {
         setError("Failed to save profile");
+      }
+      setLoading(false);
+    }
+    function handleEditUser(user) {
+      setName(user.name || "");
+      setCroppedImage(user.picture_url || "");
+      setPicture(null);
+      setPictureUrl("");
+      setAvailability(user.availability || (() => {
+        const obj = {};
+        DAYS.forEach((day2) => obj[day2] = []);
+        return obj;
+      })());
+      setEditUserId(user.id);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    async function handleDeleteUser(user) {
+      if (!window.confirm(`Are you sure you want to delete ${user.name}?`)) return;
+      setLoading(true);
+      setError("");
+      try {
+        await axios_default.delete(`${API_BASE}/family-users/${user.id}`);
+        fetchUsers();
+      } catch (err) {
+        setError("Failed to delete user");
       }
       setLoading(false);
     }
@@ -39170,7 +39211,7 @@
       (availability[day2] || []).includes(hour) ? "\u2713" : ""
     )))))))), /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontSize: 12, color: "#666", marginTop: 4 } }, "Selected: ", DAYS.map((day2) => (availability[day2] || []).length ? `${day2}: ${availability[day2].join(", ")}` : null).filter(Boolean).join(" | ") || "None"))), /* @__PURE__ */ import_react14.default.createElement("button", { type: "submit" }, "Submit Profile")), /* @__PURE__ */ import_react14.default.createElement("div", { style: { marginTop: 32 } }, /* @__PURE__ */ import_react14.default.createElement("h3", null, "Family Users"), loading && /* @__PURE__ */ import_react14.default.createElement("div", null, "Loading..."), error && /* @__PURE__ */ import_react14.default.createElement("div", { style: { color: "red" } }, error), /* @__PURE__ */ import_react14.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 16 } }, users.map((user) => /* @__PURE__ */ import_react14.default.createElement("div", { key: user.id, style: { border: "1px solid #ccc", borderRadius: 8, padding: 8, minWidth: 180, textAlign: "center", background: "#fafafa" } }, user.picture_url && /* @__PURE__ */ import_react14.default.createElement("img", { src: user.picture_url, alt: user.name, style: { width: 64, height: 64, borderRadius: "50%", objectFit: "cover", marginBottom: 8 } }), /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontWeight: "bold" } }, user.name), /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontSize: 12, color: "#555", marginTop: 4 } }, user.availability && typeof user.availability === "object" && Object.values(user.availability).some((arr) => arr.length) ? Object.entries(user.availability).map(
       ([day2, hours2]) => hours2.length ? `${day2}: ${hours2.map((h) => (h === 12 ? 12 : h % 12) + (h < 12 ? "am" : "pm")).join(", ")}` : null
-    ).filter(Boolean).join(" | ") : "No availability set"))))));
+    ).filter(Boolean).join(" | ") : "No availability set"), /* @__PURE__ */ import_react14.default.createElement("div", { style: { marginTop: 8, display: "flex", gap: 8, justifyContent: "center" } }, /* @__PURE__ */ import_react14.default.createElement("button", { type: "button", onClick: () => handleEditUser(user), style: { padding: "2px 10px", fontSize: 13 } }, "Edit"), /* @__PURE__ */ import_react14.default.createElement("button", { type: "button", onClick: () => handleDeleteUser(user), style: { padding: "2px 10px", fontSize: 13, color: "white", background: "#d32f2f", border: "none", borderRadius: 4 } }, "Delete")))))));
   }
   var root = import_client.default.createRoot(document.getElementById("react-root"));
   root.render(

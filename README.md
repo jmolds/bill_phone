@@ -1,5 +1,23 @@
 # Bill's Phone - WebRTC Communication App
 
+## Recent Updates (May 2025)
+- Added full CRUD support for family user profiles (create, edit, delete) in both backend and frontend.
+- Updated backend CORS settings to allow DELETE and PATCH methods for web app CRUD operations.
+- Redesigned UI: Profiles are now displayed at the top with profile pictures and names; management features are below.
+- Improved error handling and feedback in the web app.
+
+## Future Development Notes
+- [ ] **Multi-Person Call Support:**
+  - Future versions will allow multiple family members to join a group call with Bill if their availabilities align.
+  - Bill will always be the primary callee; other users do not call each other directly.
+- [ ] **Push Notifications:**
+  - The iPhone app will support push notifications to alert available family members to join a call with Bill.
+  - Only users with matching availability will be notified.
+- [ ] **Group Call Scheduling:**
+  - Backend will include logic to match availabilities and trigger notifications for group calls.
+
+---
+
 A dedicated WebRTC calling app for Bill, an individual with disabilities. This app is specifically designed to provide simple, accessible video calling functionality through a WebRTC implementation with a focus on ease of use and reliability.
 
 ## Current Implementation Status
