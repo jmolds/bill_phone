@@ -259,7 +259,28 @@ async function ensureFamilyUsersTableExists() {
         updated_at TIMESTAMP NOT NULL
       );
     `);
-    
+
+    // Ensure 'email' is nullable and not unique (drop NOT NULL and UNIQUE constraints if present)
+    await dbPool.query(`
+      DO $$
+      BEGIN
+        -- Drop NOT NULL constraint if present
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name='family_users' AND column_name='email' AND is_nullable='NO'
+        ) THEN
+          EXECUTE 'ALTER TABLE family_users ALTER COLUMN email DROP NOT NULL';
+        END IF;
+        -- Drop UNIQUE constraint if present
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'family_users_email_key'
+        ) THEN
+          EXECUTE 'ALTER TABLE family_users DROP CONSTRAINT family_users_email_key';
+        END IF;
+      END
+      $$;
+    `);
+
     // Ensure the unique constraint exists
     await dbPool.query(`
       DO $$
@@ -275,7 +296,7 @@ async function ensureFamilyUsersTableExists() {
       END
       $$;
     `);
-    
+
     // Add a default user if none exists
     await dbPool.query(`
       INSERT INTO family_users (id, name, picture_url, email, availability, created_at, updated_at)
