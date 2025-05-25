@@ -245,25 +245,55 @@ const dbPool = new Pool({
   max: 5,
 });
 
-// Ensure family_users table exists
-(async () => {
+async function ensureFamilyUsersTableExists() {
   try {
-    await dbPool.query(`
+    // Create the table if it doesn't exist
+    const result = await dbPool.query(`
       CREATE TABLE IF NOT EXISTS family_users (
         id UUID PRIMARY KEY,
         name TEXT NOT NULL,
         picture_url TEXT,
-        email TEXT UNIQUE NOT NULL,
+        email TEXT,
         availability JSONB,
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW()
+        created_at TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP NOT NULL
       );
     `);
-    logger.info('Ensured family_users table exists');
-  } catch (err) {
-    logger.error('Error ensuring family_users table: ' + err.message);
+    
+    // Ensure the unique constraint exists
+    await dbPool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'unique_name'
+        ) THEN
+          ALTER TABLE family_users ADD CONSTRAINT unique_name UNIQUE (name);
+          RAISE NOTICE 'Added unique_name constraint';
+        ELSE
+          RAISE NOTICE 'unique_name constraint already exists';
+        END IF;
+      END
+      $$;
+    `);
+    
+    // Add a default user if none exists
+    await dbPool.query(`
+      INSERT INTO family_users (id, name, picture_url, email, availability, created_at, updated_at)
+      SELECT gen_random_uuid(), 'Justin', NULL, NULL, 
+        '{"Sun": [17,18,19,20,21], "Mon": [17,18,19,20,21], "Tue": [17,18,19,20,21], "Wed": [17,18,19,20,21], "Thu": [17,18,19,20,21], "Fri": [17,18,19,20,21], "Sat": [17,18,19,20,21]}',
+        NOW(), NOW()
+      WHERE NOT EXISTS (SELECT 1 FROM family_users WHERE name = 'Justin');
+    `);
+    
+    logger.info('Ensured family_users table exists with unique constraint and default user');
+    return result;
+  } catch (error) {
+    logger.error('Error ensuring family_users table exists:', error);
+    throw error;
   }
-})();
+}
+
+ensureFamilyUsersTableExists();
 
 // --- Family User API Endpoints ---
 // Create or update a family user profile
