@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS ? 
   process.env.ALLOWED_ORIGINS.split(',') : 
-  ['http://localhost:19000', 'http://localhost:19001', 'http://localhost:3000'];
+  ['http://localhost:19000', 'http://localhost:19001', 'http://localhost:3000', 'null'];
 
 // Configure logger
 const logger = createLogger({

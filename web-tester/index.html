@@ -133,31 +133,16 @@
 
         <!-- --- Family User Profile API Tester --- -->
         <hr style="margin:32px 0; border:1px solid #444;">
-        <div class="profile-api-section">
+        <!-- <div class="profile-api-section">
             <h2>Family User Profile API Tester</h2>
-            <form id="profileForm" style="background:#222;padding:16px;border-radius:10px;margin-bottom:16px;">
-                <label>Name:<br><input type="text" id="profileName" required></label><br><br>
-                <label>Email:<br><input type="email" id="profileEmail" required></label><br><br>
-                <label>Picture:<br><input type="file" id="profilePic" accept="image/*"></label><br>
-                <img id="profilePicPreview" src="" alt="Preview" style="display:none;max-width:100px;margin:8px 0;"/>
-                <br>
-                <label>Hours of the Week:</label>
-                <div id="hoursGrid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:2px;margin:8px 0;"></div>
-                <small>Click cells to toggle availability. Rows = hours (6am-10pm), Cols = Sun-Sat.</small>
-                <br><br>
-                <button type="submit" class="button call-button">Create/Update Profile</button>
-            </form>
-            <button id="fetchUsersBtn" class="button">Fetch All Family Users</button>
-            <input type="text" id="fetchUserId" placeholder="User ID" style="width:200px;">
-            <button id="fetchUserBtn" class="button">Fetch User by ID</button>
-            <div id="usersList" style="margin-top:16px;"></div>
-        </div>
+            ... (HTML form hidden in favor of React UI) ...
+        </div> -->
         <!-- --- End Family User Profile API Tester --- -->
 
         <!-- React-based Profile Tester (built with main.jsx) -->
         <div id="react-root"></div>
-        <!-- In production, build main.jsx to main.js and include below: -->
         <script src="main.js"></script>
+        <!-- End React-based Profile Tester -->
 
         <div class="log-container" id="logContainer">
             <div>Logs will appear here...</div>
