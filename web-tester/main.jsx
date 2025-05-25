@@ -62,6 +62,7 @@ function App() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [editUserId, setEditUserId] = useState(null);
 
   // Fetch all users
   const fetchUsers = useCallback(async () => {
@@ -119,19 +120,64 @@ function App() {
     setLoading(true);
     setError('');
     try {
-      // Save profile to backend
-      // Ensure availability is sent as JSON, not [object Object]
-      const resp = await axios.post(`${API_BASE}/family-users`, {
-        name,
-        picture_url: croppedImage,
-        availability
-      });
-      alert(`Profile saved! Name: ${resp.data.name}`);
+      let resp;
+      if (editUserId) {
+        // PATCH update
+        resp = await axios.patch(`${API_BASE}/family-users/${editUserId}`, {
+          name,
+          picture_url: croppedImage,
+          availability
+        });
+        alert(`Profile updated! Name: ${resp.data.name}`);
+      } else {
+        // Save profile to backend
+        resp = await axios.post(`${API_BASE}/family-users`, {
+          name,
+          picture_url: croppedImage,
+          availability
+        });
+        alert(`Profile saved! Name: ${resp.data.name}`);
+      }
       setName('');
       setPicture(null);
       setPictureUrl('');
       setCroppedImage('');
-      setAvailability({});
+      setAvailability(() => { const obj = {}; DAYS.forEach(day => obj[day] = []); return obj; });
+      setEditUserId(null);
+      fetchUsers();
+    } catch (err) {
+      setError('Failed to save profile');
+    }
+    setLoading(false);
+  }
+
+  // Edit user handler
+  function handleEditUser(user) {
+    setName(user.name || '');
+    setCroppedImage(user.picture_url || '');
+    setPicture(null);
+    setPictureUrl('');
+    setAvailability(user.availability || (() => { const obj = {}; DAYS.forEach(day => obj[day] = []); return obj; })());
+    setEditUserId(user.id);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // Delete user handler
+  async function handleDeleteUser(user) {
+    if (!window.confirm(`Are you sure you want to delete ${user.name}?`)) return;
+    setLoading(true);
+    setError('');
+    try {
+      await axios.delete(`${API_BASE}/family-users/${user.id}`);
+      fetchUsers();
+    } catch (err) {
+      setError('Failed to delete user');
+    }
+    setLoading(false);
+  }
+      setCroppedImage('');
+      setAvailability(() => { const obj = {}; DAYS.forEach(day => obj[day] = []); return obj; });
+      setEditUserId(null);
       fetchUsers();
     } catch (err) {
       setError('Failed to save profile');
@@ -192,11 +238,11 @@ function App() {
                           <button type="button"
                             onClick={() => toggleHour(day, hour)}
                             style={{
-                              width:28, height:28, borderRadius:4, border:'1px solid #ccc', background: availability[day].includes(hour) ? '#4caf50' : '#fff', color: availability[day].includes(hour) ? 'white' : '#333', cursor:'pointer', fontWeight:'bold', fontSize:13, outline:'none', margin:1
+                              width:28, height:28, borderRadius:4, border:'1px solid #ccc', background: (availability[day] || []).includes(hour) ? '#4caf50' : '#fff', color: (availability[day] || []).includes(hour) ? 'white' : '#333', cursor:'pointer', fontWeight:'bold', fontSize:13, outline:'none', margin:1
                             }}
                             aria-label={`Toggle ${day} ${hour}:00`}
                           >
-                            {availability[day].includes(hour) ? '✓' : ''}
+                            {(availability[day] || []).includes(hour) ? '✓' : ''}
                           </button>
                         </td>
                       ))}
@@ -206,7 +252,7 @@ function App() {
               </table>
             </div>
             <div style={{fontSize:12, color:'#666', marginTop:4}}>
-              Selected: {DAYS.map(day => availability[day].length ? `${day}: ${availability[day].join(', ')}` : null).filter(Boolean).join(' | ') || 'None'}
+              Selected: {DAYS.map(day => (availability[day] || []).length ? `${day}: ${availability[day].join(', ')}` : null).filter(Boolean).join(' | ') || 'None'}
             </div>
           </fieldset>
         </div> 
@@ -228,6 +274,10 @@ function App() {
                       hours.length ? `${day}: ${hours.map(h => (h === 12 ? 12 : h % 12) + (h < 12 ? 'am' : 'pm')).join(', ')}` : null
                     ).filter(Boolean).join(' | ')
                   : 'No availability set'}
+              </div>
+              <div style={{marginTop:8, display:'flex', gap:8, justifyContent:'center'}}>
+                <button type="button" onClick={() => handleEditUser(user)} style={{padding:'2px 10px',fontSize:13}}>Edit</button>
+                <button type="button" onClick={() => handleDeleteUser(user)} style={{padding:'2px 10px',fontSize:13, color:'white', background:'#d32f2f', border:'none', borderRadius:4}}>Delete</button>
               </div>
             </div>
           ))}

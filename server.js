@@ -382,6 +382,48 @@ app.get('/family-users/:id', async (req, res) => {
   }
 });
 
+// Update a family user profile (name, picture_url, email, availability)
+app.patch('/family-users/:id', async (req, res) => {
+  const { name, picture_url, email, availability } = req.body;
+  if (!name) {
+    return res.status(400).json({ error: 'Missing required field: name' });
+  }
+  try {
+    const result = await dbPool.query(
+      `UPDATE family_users
+       SET name = $1,
+           picture_url = $2,
+           email = $3,
+           availability = $4,
+           updated_at = NOW()
+       WHERE id = $5
+       RETURNING *;`,
+      [name, picture_url, email, availability, req.params.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    logger.error('PATCH /family-users/:id: ' + err.message);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Delete a family user by ID
+app.delete('/family-users/:id', async (req, res) => {
+  try {
+    const result = await dbPool.query('DELETE FROM family_users WHERE id = $1 RETURNING *;', [req.params.id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json({ success: true, deleted: result.rows[0] });
+  } catch (err) {
+    logger.error('DELETE /family-users/:id: ' + err.message);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
 // Update availability for a family user
 app.patch('/family-users/:id/availability', async (req, res) => {
   const { availability } = req.body;

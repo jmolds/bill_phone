@@ -39157,8 +39157,8 @@
           height: 28,
           borderRadius: 4,
           border: "1px solid #ccc",
-          background: availability[day2].includes(hour) ? "#4caf50" : "#fff",
-          color: availability[day2].includes(hour) ? "white" : "#333",
+          background: (availability[day2] || []).includes(hour) ? "#4caf50" : "#fff",
+          color: (availability[day2] || []).includes(hour) ? "white" : "#333",
           cursor: "pointer",
           fontWeight: "bold",
           fontSize: 13,
@@ -39167,8 +39167,8 @@
         },
         "aria-label": `Toggle ${day2} ${hour}:00`
       },
-      availability[day2].includes(hour) ? "\u2713" : ""
-    )))))))), /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontSize: 12, color: "#666", marginTop: 4 } }, "Selected: ", DAYS.map((day2) => availability[day2].length ? `${day2}: ${availability[day2].join(", ")}` : null).filter(Boolean).join(" | ") || "None"))), /* @__PURE__ */ import_react14.default.createElement("button", { type: "submit" }, "Submit Profile")), /* @__PURE__ */ import_react14.default.createElement("div", { style: { marginTop: 32 } }, /* @__PURE__ */ import_react14.default.createElement("h3", null, "Family Users"), loading && /* @__PURE__ */ import_react14.default.createElement("div", null, "Loading..."), error && /* @__PURE__ */ import_react14.default.createElement("div", { style: { color: "red" } }, error), /* @__PURE__ */ import_react14.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 16 } }, users.map((user) => /* @__PURE__ */ import_react14.default.createElement("div", { key: user.id, style: { border: "1px solid #ccc", borderRadius: 8, padding: 8, minWidth: 180, textAlign: "center", background: "#fafafa" } }, user.picture_url && /* @__PURE__ */ import_react14.default.createElement("img", { src: user.picture_url, alt: user.name, style: { width: 64, height: 64, borderRadius: "50%", objectFit: "cover", marginBottom: 8 } }), /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontWeight: "bold" } }, user.name), /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontSize: 12, color: "#555", marginTop: 4 } }, user.availability && typeof user.availability === "object" && Object.values(user.availability).some((arr) => arr.length) ? Object.entries(user.availability).map(
+      (availability[day2] || []).includes(hour) ? "\u2713" : ""
+    )))))))), /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontSize: 12, color: "#666", marginTop: 4 } }, "Selected: ", DAYS.map((day2) => (availability[day2] || []).length ? `${day2}: ${availability[day2].join(", ")}` : null).filter(Boolean).join(" | ") || "None"))), /* @__PURE__ */ import_react14.default.createElement("button", { type: "submit" }, "Submit Profile")), /* @__PURE__ */ import_react14.default.createElement("div", { style: { marginTop: 32 } }, /* @__PURE__ */ import_react14.default.createElement("h3", null, "Family Users"), loading && /* @__PURE__ */ import_react14.default.createElement("div", null, "Loading..."), error && /* @__PURE__ */ import_react14.default.createElement("div", { style: { color: "red" } }, error), /* @__PURE__ */ import_react14.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 16 } }, users.map((user) => /* @__PURE__ */ import_react14.default.createElement("div", { key: user.id, style: { border: "1px solid #ccc", borderRadius: 8, padding: 8, minWidth: 180, textAlign: "center", background: "#fafafa" } }, user.picture_url && /* @__PURE__ */ import_react14.default.createElement("img", { src: user.picture_url, alt: user.name, style: { width: 64, height: 64, borderRadius: "50%", objectFit: "cover", marginBottom: 8 } }), /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontWeight: "bold" } }, user.name), /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontSize: 12, color: "#555", marginTop: 4 } }, user.availability && typeof user.availability === "object" && Object.values(user.availability).some((arr) => arr.length) ? Object.entries(user.availability).map(
       ([day2, hours2]) => hours2.length ? `${day2}: ${hours2.map((h) => (h === 12 ? 12 : h % 12) + (h < 12 ? "am" : "pm")).join(", ")}` : null
     ).filter(Boolean).join(" | ") : "No availability set"))))));
   }
