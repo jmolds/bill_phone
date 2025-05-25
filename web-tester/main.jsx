@@ -120,10 +120,11 @@ function App() {
     setError('');
     try {
       // Save profile to backend
+      // Ensure availability is sent as JSON, not [object Object]
       const resp = await axios.post(`${API_BASE}/family-users`, {
         name,
         picture_url: croppedImage,
-        availability // now weekly pattern
+        availability
       });
       alert(`Profile saved! Name: ${resp.data.name}`);
       setName('');
@@ -172,40 +173,42 @@ function App() {
           )}
         </div>
         <div style={{marginBottom: 16}}>
-          <label>Weekly Availability (EST):</label>
-          <div style={{overflowX:'auto', marginTop:8}}>
-            <table style={{borderCollapse:'collapse', background:'#f9f9f9', borderRadius:8, width:'100%', minWidth:600}}>
-              <thead>
-                <tr>
-                  <th style={{width:50}}></th>
-                  {DAYS.map(day => <th key={day} style={{padding:'4px 8px'}}>{day}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {HOURS.map(hour => (
-                  <tr key={hour}>
-                    <td style={{padding:'2px 6px', fontSize:12, textAlign:'right'}}>{(hour === 12 ? 12 : hour % 12)}:00 {hour < 12 ? 'AM' : 'PM'}</td>
-                    {DAYS.map(day => (
-                      <td key={day}>
-                        <button type="button"
-                          onClick={() => toggleHour(day, hour)}
-                          style={{
-                            width:28, height:28, borderRadius:4, border:'1px solid #ccc', background: availability[day].includes(hour) ? '#4caf50' : '#fff', color: availability[day].includes(hour) ? 'white' : '#333', cursor:'pointer', fontWeight:'bold', fontSize:13, outline:'none', margin:1
-                          }}
-                          aria-label={`Toggle ${day} ${hour}:00`}
-                        >
-                          {availability[day].includes(hour) ? '✓' : ''}
-                        </button>
-                      </td>
-                    ))}
+          <fieldset style={{border: 'none', margin: 0, padding: 0}}>
+            <legend style={{fontWeight: 600, marginBottom: 8}}>Weekly Availability (EST):</legend>
+            <div style={{overflowX:'auto', marginTop:8}}>
+              <table style={{borderCollapse:'collapse', background:'#f9f9f9', borderRadius:8, width:'100%', minWidth:600}}>
+                <thead>
+                  <tr>
+                    <th style={{width:50}}></th>
+                    {DAYS.map(day => <th key={day} style={{padding:'4px 8px'}}>{day}</th>)}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div style={{fontSize:12, color:'#666', marginTop:4}}>
-            Selected: {DAYS.map(day => availability[day].length ? `${day}: ${availability[day].join(', ')}` : null).filter(Boolean).join(' | ') || 'None'}
-          </div>
+                </thead>
+                <tbody>
+                  {HOURS.map(hour => (
+                    <tr key={hour}>
+                      <td style={{padding:'2px 6px', fontSize:12, textAlign:'right'}}>{(hour === 12 ? 12 : hour % 12)}:00 {hour < 12 ? 'AM' : 'PM'}</td>
+                      {DAYS.map(day => (
+                        <td key={day}>
+                          <button type="button"
+                            onClick={() => toggleHour(day, hour)}
+                            style={{
+                              width:28, height:28, borderRadius:4, border:'1px solid #ccc', background: availability[day].includes(hour) ? '#4caf50' : '#fff', color: availability[day].includes(hour) ? 'white' : '#333', cursor:'pointer', fontWeight:'bold', fontSize:13, outline:'none', margin:1
+                            }}
+                            aria-label={`Toggle ${day} ${hour}:00`}
+                          >
+                            {availability[day].includes(hour) ? '✓' : ''}
+                          </button>
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{fontSize:12, color:'#666', marginTop:4}}>
+              Selected: {DAYS.map(day => availability[day].length ? `${day}: ${availability[day].join(', ')}` : null).filter(Boolean).join(' | ') || 'None'}
+            </div>
+          </fieldset>
         </div> 
         <button type="submit">Submit Profile</button>
       </form>

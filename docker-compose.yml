@@ -15,6 +15,9 @@ services:
       - POSTGRES_DB=billphone
       - POSTGRES_USER=billuser
       - POSTGRES_PASSWORD=secretpassword
+    volumes:
+      - .:/app
+    entrypoint: ["sh", "-c", "chmod +x /app/init-db.sh && /app/init-db.sh && node server.js"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000"]
       interval: 30s
