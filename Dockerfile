@@ -5,11 +5,13 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only server files
 COPY server.js /app/
 COPY package-server.json /app/package.json
+COPY init-db.sh /app/init-db.sh
 
 # Install dependencies
 RUN npm install
