@@ -268,22 +268,37 @@ const dbPool = new Pool({
 // --- Family User API Endpoints ---
 // Create or update a family user profile
 app.post('/family-users', async (req, res) => {
-  const { id, name, picture_url, email, availability } = req.body;
-  if (!email || !name) {
-    return res.status(400).json({ error: 'Missing required fields: email, name' });
+  let { id, name, picture_url, email, availability } = req.body;
+  if (!name) {
+    return res.status(400).json({ error: 'Missing required field: name' });
   }
+  // If email is missing, use null
+  if (!email) email = null;
   try {
-    // Upsert by email
-    const result = await dbPool.query(`
-      INSERT INTO family_users (id, name, picture_url, email, availability, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-      ON CONFLICT (email) DO UPDATE SET
-        name = EXCLUDED.name,
-        picture_url = EXCLUDED.picture_url,
-        availability = EXCLUDED.availability,
-        updated_at = NOW()
-      RETURNING *;
-    `, [id || uuidv4(), name, picture_url, email, availability]);
+    // Upsert by name if no email, else by email
+    let result;
+    if (email) {
+      result = await dbPool.query(`
+        INSERT INTO family_users (id, name, picture_url, email, availability, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+        ON CONFLICT (email) DO UPDATE SET
+          name = EXCLUDED.name,
+          picture_url = EXCLUDED.picture_url,
+          availability = EXCLUDED.availability,
+          updated_at = NOW()
+        RETURNING *;
+      `, [id || uuidv4(), name, picture_url, email, availability]);
+    } else {
+      result = await dbPool.query(`
+        INSERT INTO family_users (id, name, picture_url, email, availability, created_at, updated_at)
+        VALUES ($1, $2, $3, NULL, $4, NOW(), NOW())
+        ON CONFLICT (name) DO UPDATE SET
+          picture_url = EXCLUDED.picture_url,
+          availability = EXCLUDED.availability,
+          updated_at = NOW()
+        RETURNING *;
+      `, [id || uuidv4(), name, picture_url, availability]);
+    }
     res.json(result.rows[0]);
   } catch (err) {
     logger.error('POST /family-users: ' + err.message);

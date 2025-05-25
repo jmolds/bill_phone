@@ -39058,7 +39058,13 @@
     const [picture, setPicture] = (0, import_react14.useState)(null);
     const [pictureUrl, setPictureUrl] = (0, import_react14.useState)("");
     const [croppedImage, setCroppedImage] = (0, import_react14.useState)("");
-    const [availability, setAvailability] = (0, import_react14.useState)({});
+    const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const HOURS2 = Array.from({ length: 14 }, (_, i) => i + 9);
+    const [availability, setAvailability] = (0, import_react14.useState)(() => {
+      const obj = {};
+      DAYS.forEach((day2) => obj[day2] = []);
+      return obj;
+    });
     const [crop, setCrop] = (0, import_react14.useState)({ x: 0, y: 0 });
     const [zoom, setZoom] = (0, import_react14.useState)(1);
     const [croppedAreaPixels, setCroppedAreaPixels] = (0, import_react14.useState)(null);
@@ -39098,14 +39104,16 @@
       }
       setShowCropper(false);
     }, [pictureUrl, croppedAreaPixels]);
-    const events = [
-      {
-        title: "Available",
-        start: new Date(2025, 4, 25, 17, 0),
-        end: new Date(2025, 4, 25, 21, 0),
-        allDay: false
-      }
-    ];
+    function toggleHour(day2, hour) {
+      setAvailability((avail) => {
+        const hours2 = avail[day2] || [];
+        if (hours2.includes(hour)) {
+          return { ...avail, [day2]: hours2.filter((h) => h !== hour) };
+        } else {
+          return { ...avail, [day2]: [...hours2, hour].sort((a, b) => a - b) };
+        }
+      });
+    }
     async function handleSubmit(e) {
       e.preventDefault();
       setLoading(true);
@@ -39115,6 +39123,7 @@
           name,
           picture_url: croppedImage,
           availability
+          // now weekly pattern
         });
         alert(`Profile saved! Name: ${resp.data.name}`);
         setName("");
@@ -39139,22 +39148,30 @@
         onZoomChange: setZoom,
         onCropComplete
       }
-    ), /* @__PURE__ */ import_react14.default.createElement("button", { type: "button", onClick: handleCropDone, style: { position: "absolute", right: 10, bottom: 10 } }, "Done"))), /* @__PURE__ */ import_react14.default.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ import_react14.default.createElement("label", null, "Hours of the Week (Demo):"), /* @__PURE__ */ import_react14.default.createElement("div", { style: { height: 300, background: "#f9f9f9", borderRadius: 8, padding: 4 } }, /* @__PURE__ */ import_react14.default.createElement(
-      Calendar$1,
+    ), /* @__PURE__ */ import_react14.default.createElement("button", { type: "button", onClick: handleCropDone, style: { position: "absolute", right: 10, bottom: 10 } }, "Done"))), /* @__PURE__ */ import_react14.default.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ import_react14.default.createElement("label", null, "Weekly Availability (EST):"), /* @__PURE__ */ import_react14.default.createElement("div", { style: { overflowX: "auto", marginTop: 8 } }, /* @__PURE__ */ import_react14.default.createElement("table", { style: { borderCollapse: "collapse", background: "#f9f9f9", borderRadius: 8, width: "100%", minWidth: 600 } }, /* @__PURE__ */ import_react14.default.createElement("thead", null, /* @__PURE__ */ import_react14.default.createElement("tr", null, /* @__PURE__ */ import_react14.default.createElement("th", { style: { width: 50 } }), DAYS.map((day2) => /* @__PURE__ */ import_react14.default.createElement("th", { key: day2, style: { padding: "4px 8px" } }, day2)))), /* @__PURE__ */ import_react14.default.createElement("tbody", null, HOURS2.map((hour) => /* @__PURE__ */ import_react14.default.createElement("tr", { key: hour }, /* @__PURE__ */ import_react14.default.createElement("td", { style: { padding: "2px 6px", fontSize: 12, textAlign: "right" } }, hour === 12 ? 12 : hour % 12, ":00 ", hour < 12 ? "AM" : "PM"), DAYS.map((day2) => /* @__PURE__ */ import_react14.default.createElement("td", { key: day2 }, /* @__PURE__ */ import_react14.default.createElement(
+      "button",
       {
-        localizer,
-        events,
-        startAccessor: "start",
-        endAccessor: "end",
-        defaultView: "week",
-        views: ["week"],
-        toolbar: false,
-        selectable: true,
-        onSelectSlot: (slotInfo) => alert("Select slot: " + JSON.stringify(slotInfo)),
-        onSelectEvent: (event) => alert("Select event: " + event.title),
-        popup: true
-      }
-    ))), /* @__PURE__ */ import_react14.default.createElement("button", { type: "submit" }, "Submit Profile")), /* @__PURE__ */ import_react14.default.createElement("div", { style: { marginTop: 32 } }, /* @__PURE__ */ import_react14.default.createElement("h3", null, "Family Users"), loading && /* @__PURE__ */ import_react14.default.createElement("div", null, "Loading..."), error && /* @__PURE__ */ import_react14.default.createElement("div", { style: { color: "red" } }, error), /* @__PURE__ */ import_react14.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 16 } }, users.map((user) => /* @__PURE__ */ import_react14.default.createElement("div", { key: user.id, style: { border: "1px solid #ccc", borderRadius: 8, padding: 8, minWidth: 140, textAlign: "center", background: "#fafafa" } }, user.picture_url && /* @__PURE__ */ import_react14.default.createElement("img", { src: user.picture_url, alt: user.name, style: { width: 64, height: 64, borderRadius: "50%", objectFit: "cover", marginBottom: 8 } }), /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontWeight: "bold" } }, user.name))))));
+        type: "button",
+        onClick: () => toggleHour(day2, hour),
+        style: {
+          width: 28,
+          height: 28,
+          borderRadius: 4,
+          border: "1px solid #ccc",
+          background: availability[day2].includes(hour) ? "#4caf50" : "#fff",
+          color: availability[day2].includes(hour) ? "white" : "#333",
+          cursor: "pointer",
+          fontWeight: "bold",
+          fontSize: 13,
+          outline: "none",
+          margin: 1
+        },
+        "aria-label": `Toggle ${day2} ${hour}:00`
+      },
+      availability[day2].includes(hour) ? "\u2713" : ""
+    )))))))), /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontSize: 12, color: "#666", marginTop: 4 } }, "Selected: ", DAYS.map((day2) => availability[day2].length ? `${day2}: ${availability[day2].join(", ")}` : null).filter(Boolean).join(" | ") || "None")), /* @__PURE__ */ import_react14.default.createElement("button", { type: "submit" }, "Submit Profile")), /* @__PURE__ */ import_react14.default.createElement("div", { style: { marginTop: 32 } }, /* @__PURE__ */ import_react14.default.createElement("h3", null, "Family Users"), loading && /* @__PURE__ */ import_react14.default.createElement("div", null, "Loading..."), error && /* @__PURE__ */ import_react14.default.createElement("div", { style: { color: "red" } }, error), /* @__PURE__ */ import_react14.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 16 } }, users.map((user) => /* @__PURE__ */ import_react14.default.createElement("div", { key: user.id, style: { border: "1px solid #ccc", borderRadius: 8, padding: 8, minWidth: 180, textAlign: "center", background: "#fafafa" } }, user.picture_url && /* @__PURE__ */ import_react14.default.createElement("img", { src: user.picture_url, alt: user.name, style: { width: 64, height: 64, borderRadius: "50%", objectFit: "cover", marginBottom: 8 } }), /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontWeight: "bold" } }, user.name), /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontSize: 12, color: "#555", marginTop: 4 } }, user.availability && typeof user.availability === "object" && Object.values(user.availability).some((arr) => arr.length) ? Object.entries(user.availability).map(
+      ([day2, hours2]) => hours2.length ? `${day2}: ${hours2.map((h) => (h === 12 ? 12 : h % 12) + (h < 12 ? "am" : "pm")).join(", ")}` : null
+    ).filter(Boolean).join(" | ") : "No availability set"))))));
   }
   var root = import_client.default.createRoot(document.getElementById("react-root"));
   root.render(

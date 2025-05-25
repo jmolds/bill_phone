@@ -45,7 +45,15 @@ function App() {
   const [picture, setPicture] = useState(null);
   const [pictureUrl, setPictureUrl] = useState('');
   const [croppedImage, setCroppedImage] = useState('');
-  const [availability, setAvailability] = useState([]); // Array of {start, end} slots
+  // Weekly availability: { [day]: [hours] }
+  const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const HOURS = Array.from({length: 14}, (_, i) => i + 9); // 9am to 10pm
+  const [availability, setAvailability] = useState(() => {
+    // { Mon: [9,10,11], Tue: [14,15], ... }
+    const obj = {};
+    DAYS.forEach(day => obj[day] = []);
+    return obj;
+  });
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
@@ -93,31 +101,16 @@ function App() {
     setShowCropper(false);
   }, [pictureUrl, croppedAreaPixels]);
 
-  // Calendar events for selected availability
-  const events = availability.map((slot, i) => ({
-    ...slot,
-    title: 'Available',
-    allDay: false,
-    id: i
-  }));
-
-  // Add slot to availability (no overlap)
-  function handleSelectSlot(slotInfo) {
-    const newSlot = {
-      start: slotInfo.start,
-      end: slotInfo.end
-    };
-    // Prevent overlapping slots
-    const overlaps = availability.some(a =>
-      (newSlot.start < a.end && newSlot.end > a.start)
-    );
-    if (!overlaps) {
-      setAvailability([...availability, newSlot]);
-    }
-  }
-  // Remove slot on event click
-  function handleSelectEvent(event) {
-    setAvailability(availability.filter((a, i) => i !== event.id));
+  // Toggle hour block for a given day
+  function toggleHour(day, hour) {
+    setAvailability(avail => {
+      const hours = avail[day] || [];
+      if (hours.includes(hour)) {
+        return { ...avail, [day]: hours.filter(h => h !== hour) };
+      } else {
+        return { ...avail, [day]: [...hours, hour].sort((a,b)=>a-b) };
+      }
+    });
   }
 
   // Submit profile and save to backend
@@ -130,7 +123,7 @@ function App() {
       const resp = await axios.post(`${API_BASE}/family-users`, {
         name,
         picture_url: croppedImage,
-        availability
+        availability // now weekly pattern
       });
       alert(`Profile saved! Name: ${resp.data.name}`);
       setName('');
@@ -179,24 +172,39 @@ function App() {
           )}
         </div>
         <div style={{marginBottom: 16}}>
-          <label>Availability (Click & drag to add, click event to remove):</label>
-          <div style={{ height: 300, background: '#f9f9f9', borderRadius: 8, padding: 4 }}>
-            <BigCalendar
-              localizer={localizer}
-              events={events}
-              startAccessor="start"
-              endAccessor="end"
-              defaultView="week"
-              views={['week']}
-              toolbar={false}
-              selectable
-              onSelectSlot={handleSelectSlot}
-              onSelectEvent={handleSelectEvent}
-              popup
-            />
+          <label>Weekly Availability (EST):</label>
+          <div style={{overflowX:'auto', marginTop:8}}>
+            <table style={{borderCollapse:'collapse', background:'#f9f9f9', borderRadius:8, width:'100%', minWidth:600}}>
+              <thead>
+                <tr>
+                  <th style={{width:50}}></th>
+                  {DAYS.map(day => <th key={day} style={{padding:'4px 8px'}}>{day}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {HOURS.map(hour => (
+                  <tr key={hour}>
+                    <td style={{padding:'2px 6px', fontSize:12, textAlign:'right'}}>{(hour === 12 ? 12 : hour % 12)}:00 {hour < 12 ? 'AM' : 'PM'}</td>
+                    {DAYS.map(day => (
+                      <td key={day}>
+                        <button type="button"
+                          onClick={() => toggleHour(day, hour)}
+                          style={{
+                            width:28, height:28, borderRadius:4, border:'1px solid #ccc', background: availability[day].includes(hour) ? '#4caf50' : '#fff', color: availability[day].includes(hour) ? 'white' : '#333', cursor:'pointer', fontWeight:'bold', fontSize:13, outline:'none', margin:1
+                          }}
+                          aria-label={`Toggle ${day} ${hour}:00`}
+                        >
+                          {availability[day].includes(hour) ? '✓' : ''}
+                        </button>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
           <div style={{fontSize:12, color:'#666', marginTop:4}}>
-            Selected slots: {availability.length === 0 ? 'None' : availability.map(a => `${a.start.toLocaleString()} - ${a.end.toLocaleString()}`).join('; ')}
+            Selected: {DAYS.map(day => availability[day].length ? `${day}: ${availability[day].join(', ')}` : null).filter(Boolean).join(' | ') || 'None'}
           </div>
         </div> 
         <button type="submit">Submit Profile</button>
@@ -212,12 +220,10 @@ function App() {
               {user.picture_url && <img src={user.picture_url} alt={user.name} style={{width:64,height:64,borderRadius:'50%',objectFit:'cover',marginBottom:8}} />}
               <div style={{fontWeight:'bold'}}>{user.name}</div>
               <div style={{fontSize:12, color:'#555', marginTop:4}}>
-                {Array.isArray(user.availability) && user.availability.length > 0
-                  ? user.availability.map(a => {
-                      const start = new Date(a.start);
-                      const end = new Date(a.end);
-                      return `${start.toLocaleString([], {weekday:'short', hour:'2-digit', minute:'2-digit'})} - ${end.toLocaleString([], {weekday:'short', hour:'2-digit', minute:'2-digit'})}`;
-                    }).join('; ')
+                {user.availability && typeof user.availability === 'object' && Object.values(user.availability).some(arr => arr.length)
+                  ? Object.entries(user.availability).map(([day, hours]) =>
+                      hours.length ? `${day}: ${hours.map(h => (h === 12 ? 12 : h % 12) + (h < 12 ? 'am' : 'pm')).join(', ')}` : null
+                    ).filter(Boolean).join(' | ')
                   : 'No availability set'}
               </div>
             </div>
