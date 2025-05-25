@@ -2,8 +2,16 @@
 set -e
 
 # Wait for PostgreSQL to be ready
-until pg_isready -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER"; do
-  echo "Waiting for PostgreSQL..."
+echo "Waiting for PostgreSQL..."
+sleep 10  # Give PostgreSQL time to start
+
+# Try to connect
+for i in {1..30}; do
+  if PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT 1;" >/dev/null 2>&1; then
+    echo "PostgreSQL is ready!"
+    break
+  fi
+  echo "Waiting for PostgreSQL... (attempt $i)"
   sleep 2
 done
 
