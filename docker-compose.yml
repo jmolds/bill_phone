@@ -25,6 +25,18 @@ services:
       retries: 3
       start_period: 10s
 
+  turnserver:
+    image: instrumentisto/coturn:latest
+    restart: unless-stopped
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      # Relay ports for TURN (UDP, can be adjusted as needed)
+      - "49160-49200:49160-49200/udp"
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+
   db:
     image: postgres:15-alpine
     restart: unless-stopped

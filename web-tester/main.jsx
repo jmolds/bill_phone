@@ -192,7 +192,9 @@ function App() {
           <div key={user.id}
                onClick={() => setSelectedProfileId(user.id)}
                style={{cursor:'pointer',textAlign:'center',border:selectedProfileId===user.id?'2px solid #1976d2':'1px solid #ccc',borderRadius:10,padding:10,background:selectedProfileId===user.id?'#e3f2fd':'#fafafa',minWidth:90}}>
-            <img src={user.picture_url||''} alt={user.name} style={{width:60,height:60,borderRadius:'50%',objectFit:'cover',marginBottom:6,background:'#eee'}} />
+            {user.picture_url && (
+  <img src={user.picture_url} alt={user.name} style={{width:60,height:60,borderRadius:'50%',objectFit:'cover',marginBottom:6,background:'#eee'}} />
+)}
             <div style={{fontWeight:'bold',fontSize:15}}>{user.name}</div>
           </div>
         ))}

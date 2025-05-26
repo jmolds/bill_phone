@@ -217,9 +217,10 @@ const WebRTCTester = () => {
       // Create peer connection
       const configuration = {
         iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' }
-        ]
+  ...((process.env.TURN_URLS || '').split(',').filter(Boolean).map(url => ({ urls: url.trim(), username: process.env.TURN_USERNAME || 'webrtcuser88', credential: process.env.TURN_PASSWORD || 'supersecret88' }))),
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' }
+]
       };
       
       const pc = new RTCPeerConnection(configuration);

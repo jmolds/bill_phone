@@ -101,7 +101,7 @@ const WebRTCTest = () => {
       }
     });
 
-    socket.current.on('ice-candidate', async (data) => {
+    socket.current.on('iceCandidate', async (data) => {
       if (peerConnection.current) {
         try {
           await peerConnection.current.addIceCandidate(
@@ -161,9 +161,10 @@ const WebRTCTest = () => {
       // Create peer connection
       const configuration = {
         iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-        ],
+  ...((process.env.TURN_URLS || '').split(',').filter(Boolean).map(url => ({ urls: url.trim(), username: process.env.TURN_USERNAME || 'webrtcuser88', credential: process.env.TURN_PASSWORD || 'supersecret88' }))),
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' }
+],
       };
 
       peerConnection.current = new RTCPeerConnection(configuration);
@@ -176,7 +177,7 @@ const WebRTCTest = () => {
       // Handle ICE candidates
       peerConnection.current.onicecandidate = (event) => {
         if (event.candidate) {
-          socket.current.emit('ice-candidate', {
+          socket.current.emit('iceCandidate', {
             to: targetDeviceId,
             candidate: event.candidate,
           });

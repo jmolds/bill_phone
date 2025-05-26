@@ -24,6 +24,27 @@ A dedicated WebRTC calling app for Bill, an individual with disabilities. This a
 
 ---
 
+## WebRTC TURN Server Integration & Security Notes (May 2025)
+
+- **Self-hosted TURN server (coturn) is now deployed on the same DigitalOcean droplet as the signaling server.**
+    - Configured for maximum compatibility (UDP, TCP, TLS relay support).
+    - Credentials and relay URLs are set in `.env` and referenced by all WebRTC clients.
+- **Firewall/Security Status:**
+    - _No firewall is currently applied at the cloud provider (DigitalOcean) level._
+    - All ports (including TURN, signaling server, and database) are open to the public internet for development/testing convenience.
+    - **Security Recommendation:**
+        - For production, apply a firewall to restrict access:
+            - Only expose required ports (e.g., 3478, 5349, 3000) to the public.
+            - Limit database port (5432) to trusted IPs or internal only.
+            - This can be done via DigitalOcean's firewall or Ubuntu's `ufw`.
+        - See below for a sample DigitalOcean firewall rule set:
+            - Allow TCP/UDP 3478 (TURN), TCP 5349 (TURN TLS), UDP 49160–49200 (TURN relay)
+            - Allow TCP 3000 (signaling server)
+            - Restrict PostgreSQL (5432) to trusted IPs only
+    - **Proceeding with all ports open for now as explicitly requested, but review security before production launch.**
+
+---
+
 ## Upcoming Development Roadmap (PostgreSQL Family User Profiles)
 
 ### 1. Docker & Database Integration
