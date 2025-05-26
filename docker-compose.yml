@@ -48,6 +48,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    command: ["sh", "-c", "echo 'log_connections=on' >> /var/lib/postgresql/data/postgresql.conf && docker-entrypoint.sh postgres"]
 
 volumes:
   pgdata:
