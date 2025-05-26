@@ -227,7 +227,7 @@ const BillsPhoneMinimal = () => {
       // Create peer connection
       const configuration = {
         iceServers: [
-  ...((process.env.TURN_URLS || '').split(',').filter(Boolean).map(url => ({ urls: url.trim(), username: process.env.TURN_USERNAME || 'webrtcuser88', credential: process.env.TURN_PASSWORD || 'supersecret88' }))),
+  ...((process.env.TURN_URLS || '').split(',').filter(Boolean).map(url => ({ urls: url.trim(), username: process.env.TURN_USERNAME || 'webrtcuser8888', credential: process.env.TURN_PASSWORD || 'supersecret8888' }))),
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
