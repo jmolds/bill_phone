@@ -322,42 +322,84 @@ ensureFamilyUsersTableExists();
 
 // --- Family User API Endpoints ---
 // Create or update a family user profile
+const sharp = require('sharp');
+// Helper: decode base64 image to Buffer
+function decodeBase64Image(dataString) {
+  if (!dataString) return null;
+  const matches = dataString.match(/^data:(.+);base64,(.+)$/);
+  if (!matches || matches.length !== 3) return null;
+  return Buffer.from(matches[2], 'base64');
+}
+
 app.post('/family-users', async (req, res) => {
-  let { id, name, picture_url, email, availability } = req.body;
+  let { id, name, picture_url, picture_data, email, availability } = req.body;
   if (!name) {
     return res.status(400).json({ error: 'Missing required field: name' });
   }
-  // If email is missing, use null
   if (!email) email = null;
+  let imageBuffer = null;
+  if (picture_data) {
+    // Accept either base64 string or raw binary
+    if (typeof picture_data === 'string') {
+      imageBuffer = decodeBase64Image(picture_data);
+    } else if (Buffer.isBuffer(picture_data)) {
+      imageBuffer = picture_data;
+    }
+    // Convert to JPEG using sharp
+    try {
+      imageBuffer = await sharp(imageBuffer).jpeg().toBuffer();
+    } catch (err) {
+      logger.error('Error converting image to JPEG:', err);
+      return res.status(400).json({ error: 'Invalid image upload' });
+    }
+  }
   try {
-    // Upsert by name if no email, else by email
     let result;
     if (email) {
       result = await dbPool.query(`
-        INSERT INTO family_users (id, name, picture_url, email, availability, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+        INSERT INTO family_users (id, name, picture_url, picture_data, email, availability, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
         ON CONFLICT (email) DO UPDATE SET
           name = EXCLUDED.name,
           picture_url = EXCLUDED.picture_url,
+          picture_data = EXCLUDED.picture_data,
           availability = EXCLUDED.availability,
           updated_at = NOW()
         RETURNING *;
-      `, [id || uuidv4(), name, picture_url, email, availability]);
+      `, [id || uuidv4(), name, picture_url, imageBuffer, email, availability]);
     } else {
       result = await dbPool.query(`
-        INSERT INTO family_users (id, name, picture_url, email, availability, created_at, updated_at)
-        VALUES ($1, $2, $3, NULL, $4, NOW(), NOW())
+        INSERT INTO family_users (id, name, picture_url, picture_data, email, availability, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, NULL, $5, NOW(), NOW())
         ON CONFLICT (name) DO UPDATE SET
           picture_url = EXCLUDED.picture_url,
+          picture_data = EXCLUDED.picture_data,
           availability = EXCLUDED.availability,
           updated_at = NOW()
         RETURNING *;
-      `, [id || uuidv4(), name, picture_url, availability]);
+      `, [id || uuidv4(), name, picture_url, imageBuffer, availability]);
     }
     res.json(result.rows[0]);
   } catch (err) {
     logger.error('POST /family-users: ' + err.message);
     res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Serve profile image as binary
+dbPool.on('error', (err) => logger.error('PG Pool error', err));
+
+app.get('/family-users/:id/picture', async (req, res) => {
+  try {
+    const result = await dbPool.query('SELECT picture_data FROM family_users WHERE id = $1', [req.params.id]);
+    if (!result.rows.length || !result.rows[0].picture_data) {
+      return res.status(404).send('No image');
+    }
+    res.set('Content-Type', 'image/jpeg');
+    res.send(result.rows[0].picture_data);
+  } catch (err) {
+    logger.error('GET /family-users/:id/picture: ' + err.message);
+    res.status(500).send('Error retrieving image');
   }
 });
 

@@ -1,10 +1,16 @@
 # Bill's Phone - WebRTC Communication App
 
 ## Recent Updates (May 2025)
-- Added full CRUD support for family user profiles (create, edit, delete) in both backend and frontend.
+- Switched to direct image storage: All uploaded profile pictures are now converted to JPEG and stored in the database using the `sharp` library. Images are always served as JPEG.
+- Simplified database user management: Only the default `postgres` user is used; all custom user scripts removed.
+- Dockerfile and dependencies updated: Added `sharp` for image processing. See Dockerfile for required system dependencies.
+- Full CRUD support for family user profiles (create, edit, delete) in both backend and frontend.
 - Updated backend CORS settings to allow DELETE and PATCH methods for web app CRUD operations.
 - Redesigned UI: Profiles are now displayed at the top with profile pictures and names; management features are below.
 - Improved error handling and feedback in the web app.
+
+## Planned/Future Features
+- **Voicemail and Conversation Review:** The system will support storing and serving audio (voicemail) and video recordings for later review. This will likely use a similar approach to image storage, with audio/video data saved as binary (BYTEA) in the database. Further backend and Dockerfile updates (e.g., `ffmpeg` for transcoding) will be considered as needed.
 
 ## Future Development Notes
 - [ ] **Multi-Person Call Support:**

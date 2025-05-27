@@ -125,21 +125,18 @@ function App() {
     setError('');
     try {
       let resp;
+      const payload = {
+        name,
+        picture_data: croppedImage || undefined,
+        availability
+      };
       if (editUserId) {
         // PATCH update
-        resp = await axios.patch(`${API_BASE}/family-users/${editUserId}`, {
-          name,
-          picture_url: croppedImage,
-          availability
-        });
+        resp = await axios.patch(`${API_BASE}/family-users/${editUserId}`, payload);
         alert(`Profile updated! Name: ${resp.data.name}`);
       } else {
         // Save profile to backend
-        resp = await axios.post(`${API_BASE}/family-users`, {
-          name,
-          picture_url: croppedImage,
-          availability
-        });
+        resp = await axios.post(`${API_BASE}/family-users`, payload);
         alert(`Profile saved! Name: ${resp.data.name}`);
       }
       setName('');
@@ -278,7 +275,14 @@ function App() {
         <div style={{display:'flex',flexWrap:'wrap',gap:16}}>
           {users.map(user => (
             <div key={user.id} style={{border:'1px solid #ccc',borderRadius:8,padding:8,minWidth:180,textAlign:'center',background:'#fafafa'}}>
-              {user.picture_url && <img src={user.picture_url} alt={user.name} style={{width:64,height:64,borderRadius:'50%',objectFit:'cover',marginBottom:8}} />}
+              {user.id && (
+  <img
+    src={user.picture_data || user.picture_url ? `${API_BASE}/family-users/${user.id}/picture` : undefined}
+    alt={user.name}
+    style={{width:64,height:64,borderRadius:'50%',objectFit:'cover',marginBottom:8}}
+    onError={e => { e.target.onerror = null; e.target.src = user.picture_url || ''; }}
+  />
+)}
               <div style={{fontWeight:'bold'}}>{user.name}</div>
               <div style={{fontSize:12, color:'#555', marginTop:4}}>
                 {user.availability && typeof user.availability === 'object' && Object.values(user.availability).some(arr => arr.length)
