@@ -6,6 +6,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     curl \
     postgresql-client \
+    libvips-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only server files
