@@ -105,6 +105,7 @@ const FamilyCaller = () => {
 
   // Setup socket event handlers
   const setupSocketEvents = () => {
+  detachSocketEvents(); // Remove all previous event listeners before adding new ones
     const socket = socketRef.current;
 
     socket.on('connect', () => {
@@ -354,17 +355,59 @@ const FamilyCaller = () => {
 
   // Clean up WebRTC resources
   const cleanupWebRTC = () => {
+    // Stop local stream tracks
     if (localStream) {
       localStream.getTracks().forEach(track => track.stop());
       setLocalStream(null);
     }
-    
+
+    // Stop remote stream tracks
+    if (remoteStream) {
+      remoteStream.getTracks().forEach(track => track.stop());
+      setRemoteStream(null);
+    }
+
+    // Clean up peer connection and remove all event handlers
     if (peerConnectionRef.current) {
+      try {
+        peerConnectionRef.current.onicecandidate = null;
+        peerConnectionRef.current.ontrack = null;
+        peerConnectionRef.current.oniceconnectionstatechange = null;
+        peerConnectionRef.current.onicegatheringstatechange = null;
+        peerConnectionRef.current.onsignalingstatechange = null;
+        peerConnectionRef.current.onnegotiationneeded = null;
+        peerConnectionRef.current.onconnectionstatechange = null;
+      } catch (e) {
+        log('Error detaching peer connection handlers: ' + e.message);
+      }
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
-    
-    setRemoteStream(null);
+
+    // Optionally clear video element srcObject if using refs
+    // if (remoteVideoRef && remoteVideoRef.current) {
+    //   try {
+    //     remoteVideoRef.current.srcObject = null;
+    //   } catch (e) {
+    //     log('Error clearing remote video srcObject: ' + e.message);
+    //   }
+    // }
+
+    log('Cleanup complete. All streams and peer connections reset.');
+  };
+
+  // Helper to remove all socket event listeners before reattaching
+  const detachSocketEvents = () => {
+    const socket = socketRef.current;
+    if (!socket) return;
+    socket.off('connect');
+    socket.off('connect_error');
+    socket.off('disconnect');
+    socket.off('incomingCall');
+    socket.off('callAccepted');
+    socket.off('iceCandidate');
+    socket.off('callEnded');
+    socket.off('callRejected');
   };
 
   return (

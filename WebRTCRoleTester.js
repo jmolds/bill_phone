@@ -46,6 +46,9 @@ const WebRTCRoleTester = () => {
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
   const [logs, setLogs] = useState([]);
+const remoteVideoRef = useRef(null);
+const [mediaDevicesInfo, setMediaDevicesInfo] = useState([]); // For device enumeration
+
   const [canAutoAnswer, setCanAutoAnswer] = useState(role === 'bills-iphone');
   const [speakerEnabled, setSpeakerEnabled] = useState(true);
 
@@ -108,13 +111,34 @@ const WebRTCRoleTester = () => {
     return () => {
       if (socketRef.current) {
         socketRef.current.disconnect();
+        detachSocketEvents();
       }
       cleanupWebRTC();
     };
   }, [role]);
 
-  // Logging function
+  // Enhanced logging function
   const log = (message) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const logEntry = `${timestamp}: ${message}`;
+    console.log(logEntry);
+    logsRef.current = [...logsRef.current, logEntry];
+    setLogs([...logsRef.current]);
+  };
+
+  // Helper: enumerate media devices and log them
+  const enumerateAndLogDevices = async () => {
+    try {
+      const devices = await mediaDevices.enumerateDevices();
+      setMediaDevicesInfo(devices);
+      log('Enumerating media devices:');
+      devices.forEach(device => {
+        log(`Device: kind=${device.kind}, label=${device.label}, id=${device.deviceId}`);
+      });
+    } catch (err) {
+      log('Error enumerating devices: ' + err.message);
+    }
+  };
     const timestamp = new Date().toLocaleTimeString();
     const logEntry = `${timestamp}: ${message}`;
     console.log(logEntry);
@@ -148,12 +172,21 @@ const WebRTCRoleTester = () => {
   const shareLogs = async () => {
     try {
       const logText = logsRef.current.join('\n');
-      const deviceInfo = `Device: ${Platform.OS} ${Platform.Version}\n` +
-                        `Role: ${role}\n` +
-                        `Target: ${targetId}\n` +
-                        `Connection: ${connectionStatus}\n` +
-                        `Call Status: ${callStatus}\n\n`;
-                        
+      let deviceDump = '';
+      if (mediaDevicesInfo && mediaDevicesInfo.length) {
+        deviceDump += '\nMedia Devices:';
+        mediaDevicesInfo.forEach(device => {
+          deviceDump += `\n  kind=${device.kind}, label=${device.label}, id=${device.deviceId}`;
+        });
+      }
+      const deviceInfo =
+        `Device: ${Platform.OS} ${Platform.Version}\n` +
+        `Role: ${role}\n` +
+        `Target: ${targetId}\n` +
+        `Connection: ${connectionStatus}\n` +
+        `Call Status: ${callStatus}\n` +
+        deviceDump +
+        '\n\n';
       await Share.share({
         message: deviceInfo + logText,
         title: 'WebRTC Test Logs'
@@ -247,6 +280,7 @@ const WebRTCRoleTester = () => {
 
   // Setup socket event handlers
   const setupSocketEvents = () => {
+  detachSocketEvents(); // Remove all previous event listeners before adding new ones
     const socket = socketRef.current;
 
     socket.on('connect', () => {
@@ -356,6 +390,7 @@ const WebRTCRoleTester = () => {
 
   // Set up WebRTC peer connection
   const setupPeerConnection = async () => {
+    await enumerateAndLogDevices(); // Log device info at connection start
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
@@ -378,7 +413,7 @@ const WebRTCRoleTester = () => {
       
       log(`Media access granted: ${stream.getTracks().length} tracks`);
       stream.getTracks().forEach(track => {
-        log(`Local track: ${track.kind} (${track.readyState})`);
+        log(`Local track: ${track.kind} (id: ${track.id}, readyState: ${track.readyState}, enabled: ${track.enabled})`);
       });
       
       setLocalStream(stream);
@@ -413,11 +448,32 @@ const WebRTCRoleTester = () => {
         if (event.streams && event.streams[0]) {
           log(`Got remote stream with ${event.streams[0].getTracks().length} tracks`);
           event.streams[0].getTracks().forEach(track => {
-            log(`Remote track: ${track.kind} (${track.readyState}) - active: ${track.enabled}`);
+            log(`Remote track: ${track.kind} (id: ${track.id}, readyState: ${track.readyState}, enabled: ${track.enabled})`);
           });
-          
+
           setRemoteStream(event.streams[0]);
           log('Remote stream set');
+
+          // Attach to video element and add playback event listeners
+          setTimeout(() => {
+            if (remoteVideoRef.current) {
+              remoteVideoRef.current.srcObject = event.streams[0];
+              remoteVideoRef.current.onloadedmetadata = () => {
+                log('Remote video metadata loaded');
+                remoteVideoRef.current.play()
+                  .then(() => log('Remote video playing'))
+                  .catch(e => log('Remote video play() failed: ' + e.message));
+              };
+              remoteVideoRef.current.onplaying = () => {
+                log('Remote video is actually playing');
+              };
+              remoteVideoRef.current.onerror = (e) => {
+                log('Remote video error: ' + (e && e.message ? e.message : 'unknown error'));
+              };
+            } else {
+              log('Remote video ref not available for playback events');
+            }
+          }, 250);
         } else {
           log('WARNING: Received track but no streams array');
         }
@@ -558,6 +614,7 @@ const WebRTCRoleTester = () => {
 
   // Clean up WebRTC resources
   const cleanupWebRTC = () => {
+    // Stop local stream tracks
     if (localStream) {
       log('Stopping local tracks...');
       localStream.getTracks().forEach(track => {
@@ -566,13 +623,8 @@ const WebRTCRoleTester = () => {
       });
       setLocalStream(null);
     }
-    
-    if (peerConnectionRef.current) {
-      log('Closing peer connection');
-      peerConnectionRef.current.close();
-      peerConnectionRef.current = null;
-    }
-    
+
+    // Stop remote stream tracks
     if (remoteStream) {
       log('Cleaning up remote stream...');
       remoteStream.getTracks().forEach(track => {
@@ -581,6 +633,50 @@ const WebRTCRoleTester = () => {
       });
       setRemoteStream(null);
     }
+
+    // Clean up peer connection and remove all event handlers
+    if (peerConnectionRef.current) {
+      log('Closing peer connection and removing event handlers');
+      try {
+        peerConnectionRef.current.onicecandidate = null;
+        peerConnectionRef.current.ontrack = null;
+        peerConnectionRef.current.oniceconnectionstatechange = null;
+        peerConnectionRef.current.onicegatheringstatechange = null;
+        peerConnectionRef.current.onsignalingstatechange = null;
+        peerConnectionRef.current.onnegotiationneeded = null;
+        peerConnectionRef.current.onconnectionstatechange = null;
+      } catch (e) {
+        log('Error detaching peer connection handlers: ' + e.message);
+      }
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+
+    // Optionally clear video element srcObject
+    if (remoteVideoRef && remoteVideoRef.current) {
+      try {
+        remoteVideoRef.current.srcObject = null;
+        log('Cleared remote video srcObject');
+      } catch (e) {
+        log('Error clearing remote video srcObject: ' + e.message);
+      }
+    }
+
+    log('Cleanup complete. All streams and peer connections reset.');
+  };
+
+  // Helper to remove all socket event listeners before reattaching
+  const detachSocketEvents = () => {
+    const socket = socketRef.current;
+    if (!socket) return;
+    socket.off('connect');
+    socket.off('connect_error');
+    socket.off('disconnect');
+    socket.off('incomingCall');
+    socket.off('callAccepted');
+    socket.off('iceCandidate');
+    socket.off('callEnded');
+    socket.off('callRejected');
   };
 
   // Toggle auto-answer setting

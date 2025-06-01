@@ -340,17 +340,22 @@ app.post('/family-users', async (req, res) => {
   if (!email) email = null;
   let imageBuffer = null;
   if (picture_data) {
+    logger.debug(`[POST /family-users] Received image data for user '${name}' (${picture_data.length || 'unknown'} bytes)`);
     // Accept either base64 string or raw binary
     if (typeof picture_data === 'string') {
       imageBuffer = decodeBase64Image(picture_data);
+      logger.debug(`[POST /family-users] Decoded base64 image for user '${name}', buffer size: ${imageBuffer ? imageBuffer.length : 0} bytes`);
     } else if (Buffer.isBuffer(picture_data)) {
       imageBuffer = picture_data;
+      logger.debug(`[POST /family-users] Received binary buffer for user '${name}', buffer size: ${imageBuffer.length} bytes`);
     }
     // Convert to JPEG using sharp
     try {
+      logger.debug(`[POST /family-users] Converting image to JPEG for user '${name}'...`);
       imageBuffer = await sharp(imageBuffer).jpeg().toBuffer();
+      logger.debug(`[POST /family-users] JPEG conversion complete for user '${name}', buffer size: ${imageBuffer.length} bytes`);
     } catch (err) {
-      logger.error('Error converting image to JPEG:', err);
+      logger.error(`[POST /family-users] Error converting image to JPEG for user '${name}':`, err);
       return res.status(400).json({ error: 'Invalid image upload' });
     }
   }
@@ -392,10 +397,13 @@ dbPool.on('error', (err) => logger.error('PG Pool error', err));
 
 app.get('/family-users/:id/picture', async (req, res) => {
   try {
+    logger.debug(`[GET /family-users/${req.params.id}/picture] Fetching image from DB...`);
     const result = await dbPool.query('SELECT picture_data FROM family_users WHERE id = $1', [req.params.id]);
     if (!result.rows.length || !result.rows[0].picture_data) {
+      logger.warn(`[GET /family-users/${req.params.id}/picture] No image found in DB.`);
       return res.status(404).send('No image');
     }
+    logger.debug(`[GET /family-users/${req.params.id}/picture] Serving image, buffer size: ${result.rows[0].picture_data.length} bytes`);
     res.set('Content-Type', 'image/jpeg');
     res.send(result.rows[0].picture_data);
   } catch (err) {
