@@ -19,7 +19,7 @@ import io from 'socket.io-client';
 const { width, height } = Dimensions.get('window');
 
 // Signaling server URL as specified in requirements
-const SIGNALING_SERVER_URL = 'http://143.198.180.248:3000';
+const SIGNALING_SERVER_URL = 'https://api.justinmolds.com';
 // Specific device IDs for production use
 // Bill's phone has a fixed ID so it can be consistently reached
 const DEVICE_ID = 'bills-iphone';

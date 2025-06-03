@@ -53,7 +53,7 @@ const [mediaDevicesInfo, setMediaDevicesInfo] = useState([]); // For device enum
   const [speakerEnabled, setSpeakerEnabled] = useState(true);
 
   // Constants
-  const SERVER_URL = 'http://143.198.180.248:3000';
+  const SERVER_URL = 'https://api.justinmolds.com';
 
   // Refs
   const socketRef = useRef(null);

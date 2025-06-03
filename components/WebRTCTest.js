@@ -18,7 +18,7 @@ import {
 import io from 'socket.io-client';
 
 // Use a variable for the signaling server URL so it's easy to change
-const SIGNALING_SERVER_URL = 'http://143.198.180.248:3000';
+const SIGNALING_SERVER_URL = 'https://api.justinmolds.com';
 
 const WebRTCTest = () => {
   // State variables

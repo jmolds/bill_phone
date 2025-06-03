@@ -20,7 +20,7 @@ import io from 'socket.io-client';
  */
 const ConnectionTester = () => {
   // State
-  const [serverUrl, setServerUrl] = useState('http://143.198.180.248:3000');
+  const [serverUrl, setServerUrl] = useState('https://api.justinmolds.com');
   const [deviceId, setDeviceId] = useState('bills-iphone');
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');
   const [logs, setLogs] = useState([]);

@@ -24,7 +24,7 @@ import io from 'socket.io-client';
  */
 const WebRTCTester = () => {
   // State variables
-  const [serverUrl, setServerUrl] = useState('http://143.198.180.248:3000');
+  const [serverUrl, setServerUrl] = useState('https://api.justinmolds.com');
   const [deviceRole, setDeviceRole] = useState('bills-iphone');
   const [targetId, setTargetId] = useState('family-caller');
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');

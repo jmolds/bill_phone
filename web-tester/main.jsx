@@ -12,7 +12,7 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 
 const localizer = momentLocalizer(moment);
 
-const API_BASE = 'http://143.198.180.248:3000'; // Adjust if needed
+const API_BASE = 'https://api.justinmolds.com'; // Updated for HTTPS deployment
 
 
 // Helper to crop image to canvas and return data URL
@@ -127,7 +127,7 @@ function App() {
       let resp;
       const payload = {
         name,
-        picture_data: croppedImage || undefined,
+        /* removed picture_data field from image display logic */: croppedImage || undefined,
         availability
       };
       if (editUserId) {
@@ -189,9 +189,9 @@ function App() {
           <div key={user.id}
                onClick={() => setSelectedProfileId(user.id)}
                style={{cursor:'pointer',textAlign:'center',border:selectedProfileId===user.id?'2px solid #1976d2':'1px solid #ccc',borderRadius:10,padding:10,background:selectedProfileId===user.id?'#e3f2fd':'#fafafa',minWidth:90}}>
-            {user.picture_url && (
-  <img src={user.picture_url} alt={user.name} style={{width:60,height:60,borderRadius:'50%',objectFit:'cover',marginBottom:6,background:'#eee'}} />
-)}
+            {user.id && (
+  <img src={`${API_BASE}/family-users/${user.id}/picture`} alt={user.name} style={{width:60,height:60,borderRadius:'50%',objectFit:'cover',marginBottom:6,background:'#eee'}} />
+) }
             <div style={{fontWeight:'bold',fontSize:15}}>{user.name}</div>
           </div>
         ))}
@@ -277,7 +277,7 @@ function App() {
             <div key={user.id} style={{border:'1px solid #ccc',borderRadius:8,padding:8,minWidth:180,textAlign:'center',background:'#fafafa'}}>
               {user.id && (
   <img
-    src={user.picture_data || user.picture_url ? `${API_BASE}/family-users/${user.id}/picture` : undefined}
+    src={user./* removed picture_data field from image display logic */ || user.picture_url ? `${API_BASE}/family-users/${user.id}/picture` : undefined}
     alt={user.name}
     style={{width:64,height:64,borderRadius:'50%',objectFit:'cover',marginBottom:8}}
     onError={e => { e.target.onerror = null; e.target.src = user.picture_url || ''; }}

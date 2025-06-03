@@ -39027,7 +39027,7 @@
 
   // web-tester/main.jsx
   var localizer = moment(import_moment.default);
-  var API_BASE = "http://143.198.180.248:3000";
+  var API_BASE = "https://api.justinmolds.com";
   function getCroppedImg(imageSrc, croppedAreaPixels) {
     return new Promise((resolve, reject) => {
       const image = new window.Image();

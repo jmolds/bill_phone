@@ -2,6 +2,8 @@
 
 ## Recent Updates (May 2025)
 - Switched to direct image storage: All uploaded profile pictures are now converted to JPEG and stored in the database using the `sharp` library. Images are always served as JPEG.
+- **Profile image retrieval is now standardized:** All frontend and mobile apps must use the `/family-users/:id/picture` endpoint to display user profile images. The backend no longer returns `picture_url` or `picture_data` fields in the `/family-users` API responses. All image display logic in the frontend references this endpoint, and all API calls use the HTTPS base URL (`https://api.justinmolds.com`).
+- See the new section below for details on secure image retrieval and display.
 - Simplified database user management: Only the default `postgres` user is used; all custom user scripts removed.
 - Dockerfile and dependencies updated: Added `sharp` for image processing. See Dockerfile for required system dependencies.
 - Full CRUD support for family user profiles (create, edit, delete) in both backend and frontend.
@@ -58,11 +60,97 @@ A dedicated WebRTC calling app for Bill, an individual with disabilities. This a
 - Environment variables for DB connection are set in Compose and `.env` files.
 - Data persists in a Docker-managed volume.
 
+
+### 1a. Rebuilding Nginx Config on the Droplet (from scratch)
+
+If you need to rebuild the Nginx configuration for HTTPS and reverse proxy to the backend, follow these steps:
+
+1. **Install Nginx (if not already installed):**
+   ```sh
+   sudo apt update
+   sudo apt install nginx
+   ```
+
+2. **Set up your Nginx server block:**
+   - Create/edit `/etc/nginx/sites-available/api.justinmolds.com` with the following template:
+   ```nginx
+   server {
+       listen 80;
+       server_name api.justinmolds.com;
+
+       location / {
+           proxy_pass http://localhost:3000;
+           proxy_set_header Host $host;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+           proxy_set_header X-Forwarded-Proto $scheme;
+       }
+   }
+   ```
+   - Enable the config and restart Nginx:
+   ```sh
+   sudo ln -sf /etc/nginx/sites-available/api.justinmolds.com /etc/nginx/sites-enabled/
+   sudo nginx -t
+   sudo systemctl reload nginx
+   ```
+
+3. **Obtain SSL certificates with Certbot:**
+   ```sh
+   sudo apt install certbot python3-certbot-nginx
+   sudo certbot --nginx -d api.justinmolds.com
+   ```
+   - Certbot will automatically update your Nginx config for HTTPS. If you want to do it manually, add this server block:
+   ```nginx
+   server {
+       listen 443 ssl;
+       server_name api.justinmolds.com;
+
+       ssl_certificate /etc/letsencrypt/live/api.justinmolds.com/fullchain.pem;
+       ssl_certificate_key /etc/letsencrypt/live/api.justinmolds.com/privkey.pem;
+       include /etc/letsencrypt/options-ssl-nginx.conf;
+       ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+       location / {
+           proxy_pass http://localhost:3000;
+           proxy_set_header Host $host;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+           proxy_set_header X-Forwarded-Proto $scheme;
+       }
+   }
+   ```
+
+4. **Firewall Configuration:**
+   - Allow HTTP and HTTPS traffic:
+   ```sh
+   sudo ufw allow 'Nginx Full'
+   sudo ufw reload
+   ```
+
+5. **Restart Nginx to apply all changes:**
+   ```sh
+   sudo systemctl restart nginx
+   ```
+
+6. **Verify:**
+   - Visit `https://api.justinmolds.com` in your browser. You should see your backend API response.
+   - Check SSL status and certificate validity.
+
+7. **Renewal:**
+   - Certbot auto-renewal is typically installed. You can test renewal with:
+   ```sh
+   sudo certbot renew --dry-run
+   ```
+
+**Note:** All SSL and HTTPS proxying is handled on the host (not in Docker). The backend container listens on port 3000, and Nginx proxies HTTPS requests to it.
+
+
 ### 2. Server API Enhancements
 - Integrate `pg` and `uuid` libraries for PostgreSQL access.
-- On startup, ensure a `family_users` table exists with fields: `id`, `name`, `picture_url`, `email`, `availability`, `created_at`, `updated_at`.
+- On startup, ensure a `family_users` table exists with fields: `id`, `name`, `picture_data` (JPEG), `email`, `availability`, `created_at`, `updated_at`.
 - REST API endpoints:
-  - `POST /family-users`: Create or update a family user profile.
+  - `POST /family-users`: Create or update a family user profile (accepts base64-encoded JPEG image data as `picture_data`).
+  - `GET /family-users/:id/picture`: Retrieve the user's profile image as a JPEG. This is the only supported method for fetching user profile images.
   - `GET /family-users`: List all family users.
   - `GET /family-users/:id`: Get a single profile.
   - `PATCH /family-users/:id/availability`: Update availability JSON.
@@ -90,6 +178,25 @@ A dedicated WebRTC calling app for Bill, an individual with disabilities. This a
 - Document all new endpoints and data formats in the README.
 
 ---
+
+## Secure Profile Image Handling (June 2025)
+
+- **Image Upload:**
+  - Images are uploaded as base64-encoded JPEGs to the backend via the `POST /family-users` and `PATCH /family-users/:id` endpoints.
+  - The backend decodes and stores images as JPEG binary data in the `picture_data` column in PostgreSQL.
+
+- **Image Retrieval:**
+  - All profile images are retrieved via the dedicated endpoint: `/family-users/:id/picture` (returns `Content-Type: image/jpeg`).
+  - The backend no longer includes `picture_url` or `picture_data` fields in the `/family-users` API responses.
+  - **Frontend and mobile apps must use `<img src="https://api.justinmolds.com/family-users/{userId}/picture">` (or equivalent) to display profile images.**
+
+- **Security:**
+  - All image traffic is served securely over HTTPS via Nginx reverse proxy.
+  - CORS is configured to allow cross-origin image loading for web and mobile clients.
+
+- **Migration Notes:**
+  - Remove any frontend logic that references `picture_url` or `picture_data` directly for image display.
+  - Always use the `/picture` endpoint for consistent, secure image rendering.
 
 ### Core Features
 - ✅ Basic UI with accessibility-focused design
