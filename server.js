@@ -120,6 +120,7 @@ io.use((socket, next) => {
 io.on('connection', (socket) => {
   const socketId = socket.id;
   logger.info(`User connected: ${socketId}`);
+  logEvent('USER_CONNECTED', { socketId, ip: socket.handshake.address, userAgent: socket.handshake.headers['user-agent'] || 'Unknown' });
   
   // Store user connection with timestamp and metadata
   connectedUsers.set(socketId, { 
@@ -139,6 +140,7 @@ io.on('connection', (socket) => {
     if (data.deviceId) {
       const customId = data.deviceId;
       logger.info(`User ${socketId} registered with custom ID: ${customId}`);
+      logEvent('REGISTER', { socketId, customId });
       
       // Store the custom ID for this socket
       const userData = connectedUsers.get(socketId);
@@ -155,6 +157,7 @@ io.on('connection', (socket) => {
   // Handle makeCall event
   socket.on('makeCall', ({ to, offer }) => {
     logger.info(`Call request from ${socketId} to ${to}`);
+    logEvent('CALL_REQUEST', { from: socketId, to });
     
     const targetSocket = getTargetSocket(to);
     if (targetSocket) {
@@ -177,6 +180,7 @@ io.on('connection', (socket) => {
   // Handle answerCall event
   socket.on('answerCall', ({ to, answer }) => {
     logger.info(`Call answered from ${socketId} to ${to}`);
+    logEvent('CALL_ANSWERED', { from: socketId, to });
     
     const targetSocket = getTargetSocket(to);
     if (targetSocket) {
@@ -196,6 +200,7 @@ io.on('connection', (socket) => {
   // Handle ICE candidates
   socket.on('iceCandidate', ({ to, candidate }) => {
     logger.debug(`ICE candidate from ${socketId} to ${to}`);
+
     
     const targetSocket = getTargetSocket(to);
     if (targetSocket) {
@@ -209,6 +214,7 @@ io.on('connection', (socket) => {
   // Handle end call
   socket.on('endCall', ({ to }) => {
     logger.info(`Call ended by ${socketId}`);
+    logEvent('CALL_ENDED', { from: socketId, to });
     
     const targetSocket = getTargetSocket(to);
     if (targetSocket) {
@@ -221,6 +227,7 @@ io.on('connection', (socket) => {
   // Handle disconnection
   socket.on('disconnect', (reason) => {
     logger.info(`User disconnected: ${socketId}, reason: ${reason}`);
+    logEvent('USER_DISCONNECTED', { socketId, reason });
     
     // Notify interested parties about the disconnection
     for (const [id, userData] of connectedUsers.entries()) {
@@ -249,6 +256,18 @@ const dbPool = new Pool({
   password: process.env.POSTGRES_PASSWORD || 'secretpassword',
   max: 5,
 });
+
+// --- Event Logging Helper ---
+async function logEvent(event_type, details) {
+  try {
+    await dbPool.query(
+      'INSERT INTO event_log (event_type, details) VALUES ($1, $2);',
+      [event_type, typeof details === 'object' ? JSON.stringify(details) : String(details)]
+    );
+  } catch (err) {
+    logger.error('Failed to log event: ' + err.message);
+  }
+}
 
 async function ensureFamilyUsersTableExists() {
   try {
@@ -340,7 +359,7 @@ app.post('/family-users', async (req, res) => {
   if (!email) email = null;
   let imageBuffer = null;
   if (picture_data) {
-    logger.debug(`[POST /family-users] Received image data for user '${name}' (${/* removed picture_data field from API responses */.length || 'unknown'} bytes)`);
+    logger.debug(`[POST /family-users] Received image data for user '${name}' (unknown bytes)`);
     // Accept either base64 string or raw binary
     if (typeof picture_data === 'string') {
       imageBuffer = decodeBase64Image(picture_data);
@@ -471,6 +490,7 @@ app.delete('/family-users/:id', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
     res.json({ success: true, deleted: result.rows[0] });
+    logEvent('PROFILE_DELETED', { id: result.rows[0].id, name: result.rows[0].name, email: result.rows[0].email });
   } catch (err) {
     logger.error('DELETE /family-users/:id: ' + err.message);
     res.status(500).json({ error: 'Database error' });
@@ -516,6 +536,7 @@ app.get('/health', (req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
   logger.error(`Error: ${err.message}`);
+  logEvent('ERROR', { message: err.message, stack: err.stack });
   res.status(500).json({ error: 'Internal Server Error' });
 });
 
