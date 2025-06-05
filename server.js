@@ -356,17 +356,23 @@ app.post('/family-users', async (req, res) => {
   if (!name) {
     return res.status(400).json({ error: 'Missing required field: name' });
   }
-    }
-    // Convert to JPEG using sharp
-    try {
-      logger.debug(`[POST /family-users] Converting image to JPEG for user '${name}'...`);
-      imageBuffer = await sharp(imageBuffer).jpeg().toBuffer();
-      logger.debug(`[POST /family-users] JPEG conversion complete for user '${name}', buffer size: ${imageBuffer.length} bytes`);
-    } catch (err) {
-      logger.error(`[POST /family-users] Error converting image to JPEG for user '${name}':`, err);
-      return res.status(400).json({ error: 'Invalid image upload' });
+
+  // Handle image data if present
+  let imageBuffer = null;
+  if (picture_data) {
+    imageBuffer = decodeBase64Image(picture_data);
+    if (imageBuffer) {
+      try {
+        logger.debug(`[POST /family-users] Converting image to JPEG for user '${name}'...`);
+        imageBuffer = await sharp(imageBuffer).jpeg().toBuffer();
+        logger.debug(`[POST /family-users] JPEG conversion complete for user '${name}', buffer size: ${imageBuffer.length} bytes`);
+      } catch (err) {
+        logger.error(`[POST /family-users] Error converting image to JPEG for user '${name}':`, err);
+        return res.status(400).json({ error: 'Invalid image upload' });
+      }
     }
   }
+
   try {
     let result;
     if (email) {
