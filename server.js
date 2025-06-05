@@ -333,20 +333,20 @@ function decodeBase64Image(dataString) {
 }
 
 app.post('/family-users', async (req, res) => {
-  let { id, name, picture_url, /* removed picture_data field from API responses */, email, availability } = req.body;
+  let { id, name, picture_data, email, availability } = req.body;
   if (!name) {
     return res.status(400).json({ error: 'Missing required field: name' });
   }
   if (!email) email = null;
   let imageBuffer = null;
-  if (/* removed picture_data field from API responses */) {
+  if (picture_data) {
     logger.debug(`[POST /family-users] Received image data for user '${name}' (${/* removed picture_data field from API responses */.length || 'unknown'} bytes)`);
     // Accept either base64 string or raw binary
-    if (typeof /* removed picture_data field from API responses */ === 'string') {
-      imageBuffer = decodeBase64Image(/* removed picture_data field from API responses */);
+    if (typeof picture_data === 'string') {
+      imageBuffer = decodeBase64Image(picture_data);
       logger.debug(`[POST /family-users] Decoded base64 image for user '${name}', buffer size: ${imageBuffer ? imageBuffer.length : 0} bytes`);
-    } else if (Buffer.isBuffer(/* removed picture_data field from API responses */)) {
-      imageBuffer = /* removed picture_data field from API responses */;
+    } else if (Buffer.isBuffer(picture_data)) {
+      imageBuffer = picture_data;
       logger.debug(`[POST /family-users] Received binary buffer for user '${name}', buffer size: ${imageBuffer.length} bytes`);
     }
     // Convert to JPEG using sharp
@@ -363,27 +363,25 @@ app.post('/family-users', async (req, res) => {
     let result;
     if (email) {
       result = await dbPool.query(`
-        INSERT INTO family_users (id, name, picture_url, /* removed picture_data field from API responses */, email, availability, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+        INSERT INTO family_users (id, name, picture_data, email, availability, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
         ON CONFLICT (email) DO UPDATE SET
           name = EXCLUDED.name,
-          picture_url = EXCLUDED.picture_url,
-          /* removed picture_data field from API responses */ = EXCLUDED./* removed picture_data field from API responses */,
+          picture_data = EXCLUDED.picture_data,
           availability = EXCLUDED.availability,
           updated_at = NOW()
         RETURNING *;
-      `, [id || uuidv4(), name, picture_url, imageBuffer, email, availability]);
+      `, [id || uuidv4(), name, imageBuffer, email, availability]);
     } else {
       result = await dbPool.query(`
-        INSERT INTO family_users (id, name, picture_url, /* removed picture_data field from API responses */, email, availability, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, NULL, $5, NOW(), NOW())
+        INSERT INTO family_users (id, name, picture_data, availability, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, NOW(), NOW())
         ON CONFLICT (name) DO UPDATE SET
-          picture_url = EXCLUDED.picture_url,
-          /* removed picture_data field from API responses */ = EXCLUDED./* removed picture_data field from API responses */,
+          picture_data = EXCLUDED.picture_data,
           availability = EXCLUDED.availability,
           updated_at = NOW()
         RETURNING *;
-      `, [id || uuidv4(), name, picture_url, imageBuffer, availability]);
+      `, [id || uuidv4(), name, imageBuffer, availability]);
     }
     res.json(result.rows[0]);
   } catch (err) {
@@ -398,14 +396,14 @@ dbPool.on('error', (err) => logger.error('PG Pool error', err));
 app.get('/family-users/:id/picture', async (req, res) => {
   try {
     logger.debug(`[GET /family-users/${req.params.id}/picture] Fetching image from DB...`);
-    const result = await dbPool.query('SELECT /* removed picture_data field from API responses */ FROM family_users WHERE id = $1', [req.params.id]);
-    if (!result.rows.length || !result.rows[0]./* removed picture_data field from API responses */) {
+    const result = await dbPool.query('SELECT picture_data FROM family_users WHERE id = $1', [req.params.id]);
+    if (!result.rows.length || !result.rows[0].picture_data) {
       logger.warn(`[GET /family-users/${req.params.id}/picture] No image found in DB.`);
       return res.status(404).send('No image');
     }
-    logger.debug(`[GET /family-users/${req.params.id}/picture] Serving image, buffer size: ${result.rows[0]./* removed picture_data field from API responses */.length} bytes`);
+    logger.debug(`[GET /family-users/${req.params.id}/picture] Serving image, buffer size: ${result.rows[0].picture_data.length} bytes`);
     res.set('Content-Type', 'image/jpeg');
-    res.send(result.rows[0]./* removed picture_data field from API responses */);
+    res.send(result.rows[0].picture_data);
   } catch (err) {
     logger.error('GET /family-users/:id/picture: ' + err.message);
     res.status(500).send('Error retrieving image');
