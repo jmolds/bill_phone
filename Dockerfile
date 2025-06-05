@@ -14,6 +14,11 @@ COPY server.js /app/
 COPY package-server.json /app/package.json
 COPY init-db.sh /app/init-db.sh
 
+# Copy default profile image and seeding script
+COPY assets/default-profile.jpg /docker-entrypoint-initdb.d/default-profile.jpg
+COPY docker-entrypoint-initdb.d/25_seed_default_picture.sh /docker-entrypoint-initdb.d/25_seed_default_picture.sh
+RUN chmod +x /docker-entrypoint-initdb.d/25_seed_default_picture.sh
+
 # Install dependencies
 RUN npm install
 

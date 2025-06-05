@@ -127,7 +127,7 @@ function App() {
       let resp;
       const payload = {
         name,
-        /* removed picture_data field from image display logic */: croppedImage || undefined,
+        picture_data: croppedImage || undefined,
         availability
       };
       if (editUserId) {
@@ -277,10 +277,10 @@ function App() {
             <div key={user.id} style={{border:'1px solid #ccc',borderRadius:8,padding:8,minWidth:180,textAlign:'center',background:'#fafafa'}}>
               {user.id && (
   <img
-    src={user./* removed picture_data field from image display logic */ || user.picture_url ? `${API_BASE}/family-users/${user.id}/picture` : undefined}
+    src={user.id ? `${API_BASE}/family-users/${user.id}/picture` : undefined}
     alt={user.name}
     style={{width:64,height:64,borderRadius:'50%',objectFit:'cover',marginBottom:8}}
-    onError={e => { e.target.onerror = null; e.target.src = user.picture_url || ''; }}
+    onError={e => { e.target.onerror = null; if (e.target.src !== window.location.origin + '/default-profile.png') e.target.src = '/default-profile.png'; }}
   />
 )}
               <div style={{fontWeight:'bold'}}>{user.name}</div>
