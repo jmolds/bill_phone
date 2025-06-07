@@ -368,6 +368,33 @@ function logUserPayload(route, body) {
 app.post('/family-users', async (req, res) => {
   logUserPayload('POST /family-users', req.body);
   let { id, name, picture_data, email, availability } = req.body;
+  let imageBuffer = null;
+  try {
+    if (picture_data) {
+      logger.info(`[POST /family-users] Received picture_data, length: ${picture_data.length}`);
+      imageBuffer = decodeBase64Image(picture_data);
+      if (!imageBuffer) {
+        logger.error('[POST /family-users] Failed to decode base64 image.');
+        return res.status(400).json({ error: 'Invalid image data' });
+      }
+      logger.info(`[POST /family-users] Decoded base64 image, buffer length: ${imageBuffer.length}`);
+      try {
+        imageBuffer = await sharp(imageBuffer)
+  .jpeg({ quality: 100 })
+  .resize(400, 400, { fit: 'cover' })
+  .toBuffer();
+        logger.info(`[POST /family-users] Converted image to JPEG, buffer length: ${imageBuffer.length}`);
+      } catch (sharpErr) {
+        logger.error('[POST /family-users] Sharp conversion failed: ' + sharpErr.message);
+        logger.error('[POST /family-users] Stack: ' + (sharpErr.stack || 'No stack'));
+        return res.status(400).json({ error: 'Image conversion failed' });
+      }
+    } else {
+      logger.info('[POST /family-users] No picture_data provided.');
+    }
+    // ... rest of the logic unchanged ...
+  logUserPayload('POST /family-users', req.body);
+  let { id, name, picture_data, email, availability } = req.body;
   if (!name) {
     return res.status(400).json({ error: 'Missing required field: name' });
   }
@@ -379,7 +406,10 @@ app.post('/family-users', async (req, res) => {
     if (imageBuffer) {
       try {
         logger.debug(`[POST /family-users] Converting image to JPEG for user '${name}'...`);
-        imageBuffer = await sharp(imageBuffer).jpeg().toBuffer();
+        imageBuffer = await sharp(imageBuffer)
+  .jpeg({ quality: 100 })
+  .resize(400, 400, { fit: 'cover' })
+  .toBuffer();
         logger.debug(`[POST /family-users] JPEG conversion complete for user '${name}', buffer size: ${imageBuffer.length} bytes`);
       } catch (err) {
         logger.error(`[POST /family-users] Error converting image to JPEG for user '${name}':`, err);
@@ -399,21 +429,34 @@ app.post('/family-users', async (req, res) => {
         VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
         ON CONFLICT (email) DO UPDATE SET
           name = EXCLUDED.name,
-          picture_data = EXCLUDED.picture_data,
+          picture_data = COALESCE(EXCLUDED.picture_data, family_users.picture_data),
           availability = EXCLUDED.availability,
           updated_at = NOW()
         RETURNING *;
       `, [id || uuidv4(), name, imageBuffer, email, availability]);
     } else {
-      result = await dbPool.query(`
-        INSERT INTO family_users (id, name, picture_data, availability, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, NOW(), NOW())
-        ON CONFLICT (name) DO UPDATE SET
-          picture_data = EXCLUDED.picture_data,
-          availability = EXCLUDED.availability,
-          updated_at = NOW()
-        RETURNING *;
-      `, [id || uuidv4(), name, imageBuffer, availability]);
+      if (imageBuffer) {
+        // If new image provided, update it
+        result = await dbPool.query(`
+          INSERT INTO family_users (id, name, picture_data, availability, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, NOW(), NOW())
+          ON CONFLICT (name) DO UPDATE SET
+            picture_data = EXCLUDED.picture_data,
+            availability = EXCLUDED.availability,
+            updated_at = NOW()
+          RETURNING *;
+        `, [id || uuidv4(), name, imageBuffer, availability]);
+      } else {
+        // If no new image, do not overwrite picture_data
+        result = await dbPool.query(`
+          INSERT INTO family_users (id, name, picture_data, availability, created_at, updated_at)
+          VALUES ($1, $2, NULL, $3, NOW(), NOW())
+          ON CONFLICT (name) DO UPDATE SET
+            availability = EXCLUDED.availability,
+            updated_at = NOW()
+          RETURNING *;
+        `, [id || uuidv4(), name, availability]);
+      }
     }
     res.json(result.rows[0]);
   } catch (err) {
@@ -546,6 +589,37 @@ app.patch('/family-users/:id/availability', async (req, res) => {
   } catch (err) {
     logger.error('PATCH /family-users/:id/availability: ' + err.message);
     res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Debug/test endpoint for image upload
+app.post('/test-image-upload', async (req, res) => {
+  const { picture_data, name } = req.body;
+  
+  console.log('[TEST] Testing image upload for:', name);
+  console.log('[TEST] Has picture_data:', !!picture_data);
+  
+  if (picture_data) {
+    try {
+      const matches = picture_data.match(/^data:(.+);base64,(.+)$/);
+      if (!matches) {
+        return res.status(400).json({ error: 'Invalid data URL format' });
+      }
+      
+      const buffer = Buffer.from(matches[2], 'base64');
+      const processedBuffer = await require('sharp')(buffer).jpeg({ quality: 100 }).toBuffer();
+      
+      res.json({
+        success: true,
+        originalSize: buffer.length,
+        processedSize: processedBuffer.length,
+        message: 'Image processing test successful'
+      });
+    } catch (error) {
+      res.status(400).json({ error: 'Processing failed', details: error.message });
+    }
+  } else {
+    res.json({ success: true, message: 'No image data - test passed' });
   }
 });
 
