@@ -39048,10 +39048,56 @@
           croppedAreaPixels.width,
           croppedAreaPixels.height
         );
-        resolve(canvas.toDataURL("image/jpeg"));
+        resolve(canvas.toDataURL("image/jpeg", 1));
       };
       image.onerror = reject;
     });
+  }
+  function ProfileImage({ userId, userName, style: style2 = {} }) {
+    const [imageError, setImageError] = (0, import_react14.useState)(false);
+    const [imageUrl, setImageUrl] = (0, import_react14.useState)("");
+    (0, import_react14.useEffect)(() => {
+      if (userId) {
+        setImageUrl(`${API_BASE}/family-users/${userId}/picture?t=${Date.now()}`);
+        setImageError(false);
+      }
+    }, [userId]);
+    const handleImageError = () => {
+      console.warn(`Failed to load image for user ${userName} (${userId})`);
+      setImageError(true);
+    };
+    if (imageError || !userId) {
+      return /* @__PURE__ */ import_react14.default.createElement("div", { style: {
+        width: 64,
+        height: 64,
+        borderRadius: "50%",
+        background: "#eee",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: 32,
+        color: "#bbb",
+        marginBottom: 8,
+        ...style2
+      } }, userName ? userName.charAt(0).toUpperCase() : "?");
+    }
+    return /* @__PURE__ */ import_react14.default.createElement(
+      "img",
+      {
+        src: imageUrl,
+        alt: userName,
+        style: {
+          width: 64,
+          height: 64,
+          borderRadius: "50%",
+          objectFit: "cover",
+          marginBottom: 8,
+          ...style2
+        },
+        onError: handleImageError,
+        onLoad: () => setImageError(false)
+      }
+    );
   }
   function App() {
     const [name, setName] = (0, import_react14.useState)("");
@@ -39073,14 +39119,17 @@
     const [loading, setLoading] = (0, import_react14.useState)(false);
     const [error, setError] = (0, import_react14.useState)("");
     const [editUserId, setEditUserId] = (0, import_react14.useState)(null);
+    const [selectedProfileId, setSelectedProfileId] = (0, import_react14.useState)(null);
     const fetchUsers = (0, import_react14.useCallback)(async () => {
       setLoading(true);
       setError("");
       try {
         const res = await axios_default.get(`${API_BASE}/family-users`);
         setUsers(res.data);
+        console.log("Fetched users:", res.data);
       } catch (err) {
-        setError("Failed to fetch users");
+        console.error("Failed to fetch users:", err);
+        setError(`Failed to fetch users: ${err.response?.data?.error || err.message}`);
       }
       setLoading(false);
     }, []);
@@ -39090,9 +39139,19 @@
     function handlePicChange(e) {
       const file = e.target.files[0];
       if (file) {
+        if (!file.type.startsWith("image/")) {
+          setError("Please select a valid image file");
+          return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+          setError("Image file too large. Please select an image under 5MB");
+          return;
+        }
         setPicture(file);
         setPictureUrl(URL.createObjectURL(file));
         setShowCropper(true);
+        setError("");
+        console.log("Image selected:", file.name, file.size, file.type);
       }
     }
     function onCropComplete(_, croppedAreaPixels2) {
@@ -39100,8 +39159,14 @@
     }
     const handleCropDone = (0, import_react14.useCallback)(async () => {
       if (pictureUrl && croppedAreaPixels) {
-        const cropped = await getCroppedImg(pictureUrl, croppedAreaPixels);
-        setCroppedImage(cropped);
+        try {
+          const cropped = await getCroppedImg(pictureUrl, croppedAreaPixels);
+          setCroppedImage(cropped);
+          console.log("Image cropped successfully, data URL length:", cropped.length);
+        } catch (error2) {
+          console.error("Error cropping image:", error2);
+          setError("Failed to crop image. Please try again.");
+        }
       }
       setShowCropper(false);
     }, [pictureUrl, croppedAreaPixels]);
@@ -39117,20 +39182,33 @@
     }
     async function handleSubmit(e) {
       e.preventDefault();
+      if (!name.trim()) {
+        setError("Name is required");
+        return;
+      }
       setLoading(true);
       setError("");
       try {
-        let resp;
         const payload = {
-          name,
-          picture_data: croppedImage || void 0,
+          name: name.trim(),
           availability
         };
+        if (croppedImage) {
+          payload.picture_data = croppedImage;
+          console.log("Submitting with image data, length:", croppedImage.length);
+        }
+        console.log("Submitting payload:", {
+          ...payload,
+          picture_data: payload.picture_data ? `[base64 data, ${payload.picture_data.length} chars]` : "none"
+        });
+        let resp;
         if (editUserId) {
           resp = await axios_default.patch(`${API_BASE}/family-users/${editUserId}`, payload);
+          console.log("Profile updated:", resp.data);
           alert(`Profile updated! Name: ${resp.data.name}`);
         } else {
           resp = await axios_default.post(`${API_BASE}/family-users`, payload);
+          console.log("Profile created:", resp.data);
           alert(`Profile saved! Name: ${resp.data.name}`);
         }
         setName("");
@@ -39145,13 +39223,15 @@
         setEditUserId(null);
         fetchUsers();
       } catch (err) {
-        setError("Failed to save profile");
+        console.error("Failed to save profile:", err);
+        const errorMessage = err.response?.data?.error || err.message || "Unknown error";
+        setError(`Failed to save profile: ${errorMessage}`);
       }
       setLoading(false);
     }
     function handleEditUser(user) {
       setName(user.name || "");
-      setCroppedImage(user.picture_url || "");
+      setCroppedImage("");
       setPicture(null);
       setPictureUrl("");
       setAvailability(user.availability || (() => {
@@ -39160,6 +39240,7 @@
         return obj;
       })());
       setEditUserId(user.id);
+      setError("");
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
     async function handleDeleteUser(user) {
@@ -39168,13 +39249,14 @@
       setError("");
       try {
         await axios_default.delete(`${API_BASE}/family-users/${user.id}`);
+        console.log("User deleted:", user.name);
         fetchUsers();
       } catch (err) {
-        setError("Failed to delete user");
+        console.error("Failed to delete user:", err);
+        setError(`Failed to delete user: ${err.response?.data?.error || err.message}`);
       }
       setLoading(false);
     }
-    const [selectedProfileId, setSelectedProfileId] = (0, import_react14.useState)(null);
     return /* @__PURE__ */ import_react14.default.createElement("div", { style: { maxWidth: 700, margin: "0 auto", color: "black", background: "white", padding: 20, borderRadius: 10 } }, /* @__PURE__ */ import_react14.default.createElement("h2", { style: { marginBottom: 12 } }, "Profiles"), /* @__PURE__ */ import_react14.default.createElement("div", { style: { display: "flex", gap: 18, marginBottom: 32, overflowX: "auto", paddingBottom: 8 } }, users.map((user) => /* @__PURE__ */ import_react14.default.createElement(
       "div",
       {
@@ -39182,9 +39264,41 @@
         onClick: () => setSelectedProfileId(user.id),
         style: { cursor: "pointer", textAlign: "center", border: selectedProfileId === user.id ? "2px solid #1976d2" : "1px solid #ccc", borderRadius: 10, padding: 10, background: selectedProfileId === user.id ? "#e3f2fd" : "#fafafa", minWidth: 90 }
       },
-      user.id && /* @__PURE__ */ import_react14.default.createElement("img", { src: `${API_BASE}/family-users/${user.id}/picture`, alt: user.name, style: { width: 60, height: 60, borderRadius: "50%", objectFit: "cover", marginBottom: 6, background: "#eee" } }),
+      /* @__PURE__ */ import_react14.default.createElement(
+        ProfileImage,
+        {
+          userId: user.id,
+          userName: user.name,
+          style: { width: 60, height: 60, marginBottom: 6 }
+        }
+      ),
       /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontWeight: "bold", fontSize: 15 } }, user.name)
-    ))), /* @__PURE__ */ import_react14.default.createElement("h2", { style: { marginBottom: 12, marginTop: 0 } }, "Manage Family Users"), /* @__PURE__ */ import_react14.default.createElement("form", { onSubmit: handleSubmit }, /* @__PURE__ */ import_react14.default.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ import_react14.default.createElement("label", { htmlFor: "profile-name" }, "Name:"), /* @__PURE__ */ import_react14.default.createElement("br", null), /* @__PURE__ */ import_react14.default.createElement("input", { id: "profile-name", value: name, onChange: (e) => setName(e.target.value), required: true })), /* @__PURE__ */ import_react14.default.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ import_react14.default.createElement("label", { htmlFor: "profile-pic" }, "Picture:"), /* @__PURE__ */ import_react14.default.createElement("br", null), /* @__PURE__ */ import_react14.default.createElement("input", { id: "profile-pic", type: "file", accept: "image/*", onChange: handlePicChange }), /* @__PURE__ */ import_react14.default.createElement("br", null), croppedImage && /* @__PURE__ */ import_react14.default.createElement("img", { src: croppedImage, alt: "Cropped Preview", style: { maxWidth: 100, margin: 8, borderRadius: 8 } }), !croppedImage && pictureUrl && /* @__PURE__ */ import_react14.default.createElement("img", { src: pictureUrl, alt: "Preview", style: { maxWidth: 100, margin: 8, borderRadius: 8, opacity: 0.5 } }), showCropper && pictureUrl && /* @__PURE__ */ import_react14.default.createElement("div", { style: { position: "relative", width: 300, height: 300, background: "#eee", marginTop: 8 } }, /* @__PURE__ */ import_react14.default.createElement(
+    ))), /* @__PURE__ */ import_react14.default.createElement("h2", { style: { marginBottom: 12, marginTop: 0 } }, editUserId ? "Edit Family User" : "Add Family User"), error && /* @__PURE__ */ import_react14.default.createElement("div", { style: {
+      color: "red",
+      background: "#fee",
+      padding: 10,
+      borderRadius: 5,
+      marginBottom: 16,
+      border: "1px solid #fcc"
+    } }, error), /* @__PURE__ */ import_react14.default.createElement("form", { onSubmit: handleSubmit }, /* @__PURE__ */ import_react14.default.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ import_react14.default.createElement("label", { htmlFor: "profile-name" }, "Name:"), /* @__PURE__ */ import_react14.default.createElement("br", null), /* @__PURE__ */ import_react14.default.createElement(
+      "input",
+      {
+        id: "profile-name",
+        value: name,
+        onChange: (e) => setName(e.target.value),
+        required: true,
+        style: { padding: 8, fontSize: 16, width: "100%", maxWidth: 300 }
+      }
+    )), /* @__PURE__ */ import_react14.default.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ import_react14.default.createElement("label", { htmlFor: "profile-pic" }, "Picture:"), /* @__PURE__ */ import_react14.default.createElement("br", null), /* @__PURE__ */ import_react14.default.createElement(
+      "input",
+      {
+        id: "profile-pic",
+        type: "file",
+        accept: "image/*",
+        onChange: handlePicChange,
+        style: { marginBottom: 8 }
+      }
+    ), /* @__PURE__ */ import_react14.default.createElement("br", null), croppedImage && /* @__PURE__ */ import_react14.default.createElement("div", null, /* @__PURE__ */ import_react14.default.createElement("p", { style: { fontSize: 14, color: "#666" } }, "Cropped image preview:"), /* @__PURE__ */ import_react14.default.createElement("img", { src: croppedImage, alt: "Cropped Preview", style: { maxWidth: 100, margin: 8, borderRadius: 8, border: "2px solid #4caf50" } })), !croppedImage && pictureUrl && /* @__PURE__ */ import_react14.default.createElement("div", null, /* @__PURE__ */ import_react14.default.createElement("p", { style: { fontSize: 14, color: "#666" } }, "Original image (crop to use):"), /* @__PURE__ */ import_react14.default.createElement("img", { src: pictureUrl, alt: "Preview", style: { maxWidth: 100, margin: 8, borderRadius: 8, opacity: 0.5 } })), showCropper && pictureUrl && /* @__PURE__ */ import_react14.default.createElement("div", { style: { position: "relative", width: 300, height: 300, background: "#eee", marginTop: 8, border: "1px solid #ccc" } }, /* @__PURE__ */ import_react14.default.createElement(
       Cropper,
       {
         image: pictureUrl,
@@ -39195,7 +39309,25 @@
         onZoomChange: setZoom,
         onCropComplete
       }
-    ), /* @__PURE__ */ import_react14.default.createElement("button", { type: "button", onClick: handleCropDone, style: { position: "absolute", right: 10, bottom: 10 } }, "Done"))), /* @__PURE__ */ import_react14.default.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ import_react14.default.createElement("fieldset", { style: { border: "none", margin: 0, padding: 0 } }, /* @__PURE__ */ import_react14.default.createElement("legend", { style: { fontWeight: 600, marginBottom: 8 } }, "Weekly Availability (EST):"), /* @__PURE__ */ import_react14.default.createElement("div", { style: { overflowX: "auto", marginTop: 8 } }, /* @__PURE__ */ import_react14.default.createElement("table", { style: { borderCollapse: "collapse", background: "#f9f9f9", borderRadius: 8, width: "100%", minWidth: 600 } }, /* @__PURE__ */ import_react14.default.createElement("thead", null, /* @__PURE__ */ import_react14.default.createElement("tr", null, /* @__PURE__ */ import_react14.default.createElement("th", { style: { width: 50 } }), DAYS.map((day2) => /* @__PURE__ */ import_react14.default.createElement("th", { key: day2, style: { padding: "4px 8px" } }, day2)))), /* @__PURE__ */ import_react14.default.createElement("tbody", null, HOURS2.map((hour) => /* @__PURE__ */ import_react14.default.createElement("tr", { key: hour }, /* @__PURE__ */ import_react14.default.createElement("td", { style: { padding: "2px 6px", fontSize: 12, textAlign: "right" } }, hour === 12 ? 12 : hour % 12, ":00 ", hour < 12 ? "AM" : "PM"), DAYS.map((day2) => /* @__PURE__ */ import_react14.default.createElement("td", { key: day2 }, /* @__PURE__ */ import_react14.default.createElement(
+    ), /* @__PURE__ */ import_react14.default.createElement(
+      "button",
+      {
+        type: "button",
+        onClick: handleCropDone,
+        style: {
+          position: "absolute",
+          right: 10,
+          bottom: 10,
+          background: "#4caf50",
+          color: "white",
+          border: "none",
+          padding: "8px 16px",
+          borderRadius: 4,
+          cursor: "pointer"
+        }
+      },
+      "Done Cropping"
+    ))), /* @__PURE__ */ import_react14.default.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ import_react14.default.createElement("fieldset", { style: { border: "none", margin: 0, padding: 0 } }, /* @__PURE__ */ import_react14.default.createElement("legend", { style: { fontWeight: 600, marginBottom: 8 } }, "Weekly Availability (EST):"), /* @__PURE__ */ import_react14.default.createElement("div", { style: { overflowX: "auto", marginTop: 8 } }, /* @__PURE__ */ import_react14.default.createElement("table", { style: { borderCollapse: "collapse", background: "#f9f9f9", borderRadius: 8, width: "100%", minWidth: 600 } }, /* @__PURE__ */ import_react14.default.createElement("thead", null, /* @__PURE__ */ import_react14.default.createElement("tr", null, /* @__PURE__ */ import_react14.default.createElement("th", { style: { width: 50 } }), DAYS.map((day2) => /* @__PURE__ */ import_react14.default.createElement("th", { key: day2, style: { padding: "4px 8px" } }, day2)))), /* @__PURE__ */ import_react14.default.createElement("tbody", null, HOURS2.map((hour) => /* @__PURE__ */ import_react14.default.createElement("tr", { key: hour }, /* @__PURE__ */ import_react14.default.createElement("td", { style: { padding: "2px 6px", fontSize: 12, textAlign: "right" } }, hour === 12 ? 12 : hour % 12, ":00 ", hour < 12 ? "AM" : "PM"), DAYS.map((day2) => /* @__PURE__ */ import_react14.default.createElement("td", { key: day2 }, /* @__PURE__ */ import_react14.default.createElement(
       "button",
       {
         type: "button",
@@ -39216,20 +39348,70 @@
         "aria-label": `Toggle ${day2} ${hour}:00`
       },
       (availability[day2] || []).includes(hour) ? "\u2713" : ""
-    )))))))), /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontSize: 12, color: "#666", marginTop: 4 } }, "Selected: ", DAYS.map((day2) => (availability[day2] || []).length ? `${day2}: ${availability[day2].join(", ")}` : null).filter(Boolean).join(" | ") || "None"))), /* @__PURE__ */ import_react14.default.createElement("button", { type: "submit" }, "Submit Profile")), /* @__PURE__ */ import_react14.default.createElement("div", { style: { marginTop: 32 } }, /* @__PURE__ */ import_react14.default.createElement("h3", null, "Family Users"), loading && /* @__PURE__ */ import_react14.default.createElement("div", null, "Loading..."), error && /* @__PURE__ */ import_react14.default.createElement("div", { style: { color: "red" } }, error), /* @__PURE__ */ import_react14.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 16 } }, users.map((user) => /* @__PURE__ */ import_react14.default.createElement("div", { key: user.id, style: { border: "1px solid #ccc", borderRadius: 8, padding: 8, minWidth: 180, textAlign: "center", background: "#fafafa" } }, user.id && /* @__PURE__ */ import_react14.default.createElement(
-      "img",
+    )))))))), /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontSize: 12, color: "#666", marginTop: 4 } }, "Selected: ", DAYS.map((day2) => (availability[day2] || []).length ? `${day2}: ${availability[day2].join(", ")}` : null).filter(Boolean).join(" | ") || "None"))), /* @__PURE__ */ import_react14.default.createElement(
+      "button",
       {
-        src: `${API_BASE}/family-users/${user.id}/picture`,
-        alt: user.name,
-        style: { width: 64, height: 64, borderRadius: "50%", objectFit: "cover", marginBottom: 8 },
-        onError: (e) => {
-          e.target.onerror = null;
-          e.target.src = "/assets/default-profile.png";
+        type: "submit",
+        disabled: loading,
+        style: {
+          background: loading ? "#ccc" : "#1976d2",
+          color: "white",
+          border: "none",
+          padding: "12px 24px",
+          fontSize: 16,
+          borderRadius: 4,
+          cursor: loading ? "not-allowed" : "pointer"
         }
-      }
-    ), /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontWeight: "bold" } }, user.name), /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontSize: 12, color: "#555", marginTop: 4 } }, user.availability && typeof user.availability === "object" && Object.values(user.availability).some((arr) => arr.length) ? Object.entries(user.availability).map(
-      ([day2, hours2]) => hours2.length ? `${day2}: ${hours2.map((h) => (h === 12 ? 12 : h % 12) + (h < 12 ? "am" : "pm")).join(", ")}` : null
-    ).filter(Boolean).join(" | ") : "No availability set"), /* @__PURE__ */ import_react14.default.createElement("div", { style: { marginTop: 8, display: "flex", gap: 8, justifyContent: "center" } }, /* @__PURE__ */ import_react14.default.createElement("button", { type: "button", onClick: () => handleEditUser(user), style: { padding: "2px 10px", fontSize: 13 } }, "Edit"), /* @__PURE__ */ import_react14.default.createElement("button", { type: "button", onClick: () => handleDeleteUser(user), style: { padding: "2px 10px", fontSize: 13, color: "white", background: "#d32f2f", border: "none", borderRadius: 4 } }, "Delete")))))));
+      },
+      loading ? "Saving..." : editUserId ? "Update Profile" : "Create Profile"
+    ), editUserId && /* @__PURE__ */ import_react14.default.createElement(
+      "button",
+      {
+        type: "button",
+        onClick: () => {
+          setEditUserId(null);
+          setName("");
+          setPicture(null);
+          setPictureUrl("");
+          setCroppedImage("");
+          setAvailability(() => {
+            const obj = {};
+            DAYS.forEach((day2) => obj[day2] = []);
+            return obj;
+          });
+          setError("");
+        },
+        style: {
+          background: "#666",
+          color: "white",
+          border: "none",
+          padding: "12px 24px",
+          fontSize: 16,
+          borderRadius: 4,
+          cursor: "pointer",
+          marginLeft: 8
+        }
+      },
+      "Cancel Edit"
+    )), /* @__PURE__ */ import_react14.default.createElement("div", { style: { marginTop: 32 } }, /* @__PURE__ */ import_react14.default.createElement("h3", null, "Family Users (", users.length, ")"), loading && /* @__PURE__ */ import_react14.default.createElement("div", null, "Loading..."), /* @__PURE__ */ import_react14.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 16 } }, users.map((user) => /* @__PURE__ */ import_react14.default.createElement("div", { key: user.id, style: { border: "1px solid #ccc", borderRadius: 8, padding: 8, minWidth: 180, textAlign: "center", background: "#fafafa" } }, /* @__PURE__ */ import_react14.default.createElement(ProfileImage, { userId: user.id, userName: user.name }), /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontWeight: "bold" } }, user.name), /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontSize: 12, color: "#555", marginTop: 4 } }, user.availability && typeof user.availability === "object" && Object.values(user.availability).some((arr) => arr && arr.length) ? Object.entries(user.availability).map(
+      ([day2, hours2]) => hours2 && hours2.length ? `${day2}: ${hours2.map((h) => (h === 12 ? 12 : h % 12) + (h < 12 ? "am" : "pm")).join(", ")}` : null
+    ).filter(Boolean).join(" | ") : "No availability set"), /* @__PURE__ */ import_react14.default.createElement("div", { style: { marginTop: 8, display: "flex", gap: 8, justifyContent: "center" } }, /* @__PURE__ */ import_react14.default.createElement(
+      "button",
+      {
+        type: "button",
+        onClick: () => handleEditUser(user),
+        style: { padding: "4px 12px", fontSize: 13, background: "#1976d2", color: "white", border: "none", borderRadius: 4, cursor: "pointer" }
+      },
+      "Edit"
+    ), /* @__PURE__ */ import_react14.default.createElement(
+      "button",
+      {
+        type: "button",
+        onClick: () => handleDeleteUser(user),
+        style: { padding: "4px 12px", fontSize: 13, color: "white", background: "#d32f2f", border: "none", borderRadius: 4, cursor: "pointer" }
+      },
+      "Delete"
+    )))))));
   }
   var root = import_client.default.createRoot(document.getElementById("react-root"));
   root.render(

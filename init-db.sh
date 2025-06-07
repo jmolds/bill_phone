@@ -51,6 +51,19 @@ else
   WHERE NOT EXISTS (SELECT 1 FROM family_users WHERE name = 'default_user');
   "
 
+  # Seed default profile image for default_user if image file is present
+  if [ -f "/docker-entrypoint-initdb.d/default-profile.jpg" ]; then
+    echo "Seeding default profile image for default_user..."
+    PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
+      UPDATE family_users
+      SET picture_data = pg_read_binary_file('/docker-entrypoint-initdb.d/default-profile.jpg')
+      WHERE name = 'default_user' AND picture_data IS NULL;
+    "
+    echo "Image seeded successfully."
+  else
+    echo "Default profile image not found at /docker-entrypoint-initdb.d/default-profile.jpg"
+  fi
+
   # Insert Justin (actual family member with schedule)
   PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
   INSERT INTO family_users (id, name, picture_data, email, availability, created_at, updated_at)
