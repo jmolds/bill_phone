@@ -365,60 +365,47 @@ function logUserPayload(route, body) {
 }
 
 
+// Shared image processing helper
+async function processProfileImage(picture_data, logPrefix = '') {
+  if (!picture_data) return null;
+  const loggerPrefix = logPrefix ? `[${logPrefix}] ` : '';
+  const buffer = decodeBase64Image(picture_data);
+  if (!buffer) {
+    logger.error(`${loggerPrefix}Failed to decode base64 image.`);
+    throw new Error('Invalid image data');
+  }
+  logger.info(`${loggerPrefix}Decoded base64 image, buffer length: ${buffer.length}`);
+  try {
+    const processed = await sharp(buffer)
+      .jpeg({ quality: 100 })
+      .resize(400, 400, { fit: 'cover' })
+      .toBuffer();
+    logger.info(`${loggerPrefix}Converted image to JPEG, buffer length: ${processed.length}`);
+    return processed;
+  } catch (err) {
+    logger.error(`${loggerPrefix}Sharp conversion failed: ${err.message}`);
+    throw new Error('Image conversion failed');
+  }
+}
+
 app.post('/family-users', async (req, res) => {
   logUserPayload('POST /family-users', req.body);
   let { id, name, picture_data, email, availability } = req.body;
   let imageBuffer = null;
-  try {
-    if (picture_data) {
-      logger.info(`[POST /family-users] Received picture_data, length: ${picture_data.length}`);
-      imageBuffer = decodeBase64Image(picture_data);
-      if (!imageBuffer) {
-        logger.error('[POST /family-users] Failed to decode base64 image.');
-        return res.status(400).json({ error: 'Invalid image data' });
-      }
-      logger.info(`[POST /family-users] Decoded base64 image, buffer length: ${imageBuffer.length}`);
-      try {
-        imageBuffer = await sharp(imageBuffer)
-  .jpeg({ quality: 100 })
-  .resize(400, 400, { fit: 'cover' })
-  .toBuffer();
-        logger.info(`[POST /family-users] Converted image to JPEG, buffer length: ${imageBuffer.length}`);
-      } catch (sharpErr) {
-        logger.error('[POST /family-users] Sharp conversion failed: ' + sharpErr.message);
-        logger.error('[POST /family-users] Stack: ' + (sharpErr.stack || 'No stack'));
-        return res.status(400).json({ error: 'Image conversion failed' });
-      }
-    } else {
-      logger.info('[POST /family-users] No picture_data provided.');
+  if (picture_data) {
+    try {
+      imageBuffer = await processProfileImage(picture_data, 'POST /family-users');
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
     }
-    // ... rest of the logic unchanged ...
-  logUserPayload('POST /family-users', req.body);
-  let { id, name, picture_data, email, availability } = req.body;
+  }
+  // ... rest of the logic unchanged ...
   if (!name) {
     return res.status(400).json({ error: 'Missing required field: name' });
   }
 
-  // Handle image data if present
-  let imageBuffer = null;
-  if (picture_data) {
-    imageBuffer = decodeBase64Image(picture_data);
-    if (imageBuffer) {
-      try {
-        logger.debug(`[POST /family-users] Converting image to JPEG for user '${name}'...`);
-        imageBuffer = await sharp(imageBuffer)
-  .jpeg({ quality: 100 })
-  .resize(400, 400, { fit: 'cover' })
-  .toBuffer();
-        logger.debug(`[POST /family-users] JPEG conversion complete for user '${name}', buffer size: ${imageBuffer.length} bytes`);
-      } catch (err) {
-        logger.error(`[POST /family-users] Error converting image to JPEG for user '${name}':`, err);
-        return res.status(400).json({ error: 'Invalid image upload' });
-      }
-    } else {
-      logger.debug(`[POST /family-users] picture_data provided but could not decode for user '${name}'.`);
-    }
-  }
+  // Handle image data if present (already processed above)
+
 
   try {
     let result;
@@ -530,22 +517,48 @@ app.get('/family-users/:id', async (req, res) => {
 
 // Update a family user profile (name, picture_url, email, availability)
 app.patch('/family-users/:id', async (req, res) => {
-  const { name, picture_url, email, availability } = req.body;
+  const { name, picture_data, picture_url, email, availability } = req.body;
   if (!name) {
     return res.status(400).json({ error: 'Missing required field: name' });
   }
+
+  let imageBuffer = null;
+  if (picture_data) {
+    try {
+      imageBuffer = await processProfileImage(picture_data, 'PATCH /family-users/:id');
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+  }
+
   try {
-    const result = await dbPool.query(
-      `UPDATE family_users
-       SET name = $1,
-           picture_url = $2,
-           email = $3,
-           availability = $4,
-           updated_at = NOW()
-       WHERE id = $5
-       RETURNING *;`,
-      [name, picture_url, email, availability, req.params.id]
-    );
+    let result;
+    if (imageBuffer) {
+      result = await dbPool.query(
+        `UPDATE family_users
+         SET name = $1,
+             picture_data = $2,
+             picture_url = $3,
+             email = $4,
+             availability = $5,
+             updated_at = NOW()
+         WHERE id = $6
+         RETURNING *;`,
+        [name, imageBuffer, picture_url, email, availability, req.params.id]
+      );
+    } else {
+      result = await dbPool.query(
+        `UPDATE family_users
+         SET name = $1,
+             picture_url = $2,
+             email = $3,
+             availability = $4,
+             updated_at = NOW()
+         WHERE id = $5
+         RETURNING *;`,
+        [name, picture_url, email, availability, req.params.id]
+      );
+    }
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }

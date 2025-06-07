@@ -24,27 +24,45 @@ if [ "$db_ready" = false ]; then
   echo "You'll need to manually run migrations later."
   # Don't exit - continue to server start
 else
+  echo "Running database migrations and seeding..."
 
-# Add unique constraint on name if not exists
-psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'unique_name'
-  ) THEN
-    ALTER TABLE family_users ADD CONSTRAINT unique_name UNIQUE (name);
-  END IF;
-END
-$$;
-"
+  # Add unique constraint on name if not exists
+  PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
+  DO \$\$
+  BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint WHERE conname = 'unique_name'
+    ) THEN
+      ALTER TABLE family_users ADD CONSTRAINT unique_name UNIQUE (name);
+      RAISE NOTICE 'Added unique_name constraint';
+    ELSE
+      RAISE NOTICE 'unique_name constraint already exists';
+    END IF;
+  END
+  \$\$;
+  "
 
-# Insert default Justin row if not exists
-psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
-INSERT INTO family_users (id, name, picture_url, email, availability, created_at, updated_at)
-SELECT gen_random_uuid(), 'Justin', NULL, NULL, 
-  '{"Sun": [17,18,19,20,21], "Mon": [17,18,19,20,21], "Tue": [17,18,19,20,21], "Wed": [17,18,19,20,21], "Thu": [17,18,19,20,21], "Fri": [17,18,19,20,21], "Sat": [17,18,19,20,21]}',
-  NOW(), NOW()
-WHERE NOT EXISTS (SELECT 1 FROM family_users WHERE name = 'Justin');
-"
-echo "DB migrations and seed complete."
+  # Insert default_user (technical fallback for missing images)
+  PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
+  INSERT INTO family_users (id, name, picture_data, email, availability, created_at, updated_at)
+  SELECT gen_random_uuid(), 'default_user', NULL, NULL, 
+    '{}',
+    NOW(), NOW()
+  WHERE NOT EXISTS (SELECT 1 FROM family_users WHERE name = 'default_user');
+  "
+
+  # Insert Justin (actual family member with schedule)
+  PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
+  INSERT INTO family_users (id, name, picture_data, email, availability, created_at, updated_at)
+  SELECT gen_random_uuid(), 'Justin', NULL, NULL, 
+    '{\"Sun\": [17,18,19,20,21], \"Mon\": [17,18,19,20,21], \"Tue\": [17,18,19,20,21], \"Wed\": [17,18,19,20,21], \"Thu\": [17,18,19,20,21], \"Fri\": [17,18,19,20,21], \"Sat\": [17,18,19,20,21]}',
+    NOW(), NOW()
+  WHERE NOT EXISTS (SELECT 1 FROM family_users WHERE name = 'Justin');
+  "
+
+  echo "✅ Database migrations and seeding complete."
+  echo "   - default_user: Technical fallback for missing profile images"
+  echo "   - Justin: Family member with 5-10PM availability schedule"
 fi  # Close the if-else block for db_ready check
+
+echo "🚀 Starting Bill's Phone signaling server..."
