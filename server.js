@@ -351,7 +351,22 @@ function decodeBase64Image(dataString) {
   return Buffer.from(matches[2], 'base64');
 }
 
+// Debug: log all incoming POST/PATCH payloads for /family-users
+function logUserPayload(route, body) {
+  try {
+    const preview = { ...body };
+    if (preview.picture_data && typeof preview.picture_data === 'string') {
+      preview.picture_data = `base64 string, length: ${preview.picture_data.length}`;
+    }
+    logger.info(`[${route}] Incoming payload: ` + JSON.stringify(preview));
+  } catch (err) {
+    logger.warn(`[${route}] Could not stringify payload: ` + err.message);
+  }
+}
+
+
 app.post('/family-users', async (req, res) => {
+  logUserPayload('POST /family-users', req.body);
   let { id, name, picture_data, email, availability } = req.body;
   if (!name) {
     return res.status(400).json({ error: 'Missing required field: name' });
@@ -370,11 +385,14 @@ app.post('/family-users', async (req, res) => {
         logger.error(`[POST /family-users] Error converting image to JPEG for user '${name}':`, err);
         return res.status(400).json({ error: 'Invalid image upload' });
       }
+    } else {
+      logger.debug(`[POST /family-users] picture_data provided but could not decode for user '${name}'.`);
     }
   }
 
   try {
     let result;
+    logger.info(`[POST /family-users] Inserting/updating user: ${name}, id: ${id}, email: ${email || 'N/A'}, image buffer: ${imageBuffer ? imageBuffer.length : 0} bytes`);
     if (email) {
       result = await dbPool.query(`
         INSERT INTO family_users (id, name, picture_data, email, availability, created_at, updated_at)
@@ -400,6 +418,7 @@ app.post('/family-users', async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     logger.error('POST /family-users: ' + err.message);
+    logger.error('POST /family-users: ' + (err.stack || 'No stack'));
     res.status(500).json({ error: 'Database error' });
   }
 });
@@ -408,28 +427,35 @@ app.post('/family-users', async (req, res) => {
 dbPool.on('error', (err) => logger.error('PG Pool error', err));
 
 app.get('/family-users/:id/picture', async (req, res) => {
+  logger.info(`[GET /family-users/${req.params.id}/picture] Requested`);
   try {
     res.set('Cross-Origin-Resource-Policy', 'cross-origin');
     logger.debug(`[GET /family-users/${req.params.id}/picture] Fetching image from DB...`);
+    logger.info(`[GET /family-users/${req.params.id}/picture] Querying DB for user image...`);
     const result = await dbPool.query('SELECT picture_data FROM family_users WHERE id = $1', [req.params.id]);
     let imageBuffer = result.rows[0]?.picture_data;
+    logger.info(`[GET /family-users/${req.params.id}/picture] User image buffer: ${imageBuffer ? imageBuffer.length : 0} bytes`);
     if (!imageBuffer) {
       logger.warn(`[GET /family-users/${req.params.id}/picture] No image found for user, trying default user...`);
       // Try to fetch the default user's image by name (e.g., 'Justin')
       const defaultResult = await dbPool.query("SELECT picture_data FROM family_users WHERE name = $1 LIMIT 1", ['default_user']);
       imageBuffer = defaultResult.rows[0]?.picture_data;
+      logger.info(`[GET /family-users/${req.params.id}/picture] Default user image buffer: ${imageBuffer ? imageBuffer.length : 0} bytes`);
       if (!imageBuffer) {
         logger.warn(`[GET /family-users/${req.params.id}/picture] No default image found in DB.`);
         return res.status(404).send('No image');
       }
       logger.debug(`[GET /family-users/${req.params.id}/picture] Serving default user's image.`);
+      logger.info(`[GET /family-users/${req.params.id}/picture] Serving default user's image, buffer size: ${imageBuffer ? imageBuffer.length : 0} bytes`);
     } else {
       logger.debug(`[GET /family-users/${req.params.id}/picture] Serving user's image, buffer size: ${imageBuffer.length} bytes`);
+      logger.info(`[GET /family-users/${req.params.id}/picture] Serving user's image, buffer size: ${imageBuffer.length} bytes`);
     }
     res.set('Content-Type', 'image/jpeg');
     res.send(imageBuffer);
   } catch (err) {
     logger.error('GET /family-users/:id/picture: ' + err.message);
+    logger.error('GET /family-users/:id/picture: ' + (err.stack || 'No stack'));
     res.status(500).send('Error retrieving image');
   }
 });
