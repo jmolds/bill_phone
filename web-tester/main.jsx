@@ -276,12 +276,18 @@ function App() {
           {users.map(user => (
             <div key={user.id} style={{border:'1px solid #ccc',borderRadius:8,padding:8,minWidth:180,textAlign:'center',background:'#fafafa'}}>
               {user.id && (
+  imgError ? (
+  <div style={{width:64,height:64,borderRadius:'50%',background:'#eee',display:'flex',alignItems:'center',justifyContent:'center',fontSize:32,color:'#bbb',marginBottom:8}}>
+    ?
+  </div>
+) : (
   <img
-    src={user.id ? `${API_BASE}/family-users/${user.id}/picture` : undefined}
+    src={`${API_BASE}/family-users/${user.id}/picture`}
     alt={user.name}
     style={{width:64,height:64,borderRadius:'50%',objectFit:'cover',marginBottom:8}}
-    onError={e => { e.target.onerror = null; if (e.target.src !== window.location.origin + '/default-profile.png') e.target.src = '/default-profile.png'; }}
+    onError={() => setImgError(true)}
   />
+)
 )}
               <div style={{fontWeight:'bold'}}>{user.name}</div>
               <div style={{fontSize:12, color:'#555', marginTop:4}}>

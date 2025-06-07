@@ -11,6 +11,29 @@
 - Redesigned UI: Profiles are now displayed at the top with profile pictures and names; management features are below.
 - Improved error handling and feedback in the web app.
 
+## Default Profile Image Implementation (June 2025)
+
+### How It Works
+- A `default_user` entry in the `family_users` table serves as the fallback for users without profile pictures.
+- During Docker container initialization, the `default-profile.jpg` from the `assets/` directory is automatically loaded into the database for `default_user`.
+- The `/family-users/:id/picture` endpoint will automatically serve the `default_user`'s profile image if the requested user has no uploaded image.
+
+### Requirements & Setup
+1. **Before building the Docker image:** 
+   - Ensure `assets/default-profile.jpg` exists in the project root.
+   - The file must be a valid JPEG image.
+2. **Database seeding:**
+   - The `docker-entrypoint-initdb.d/25_seed_default_picture.sh` script handles loading the image into the database.
+   - This script runs automatically during container initialization.
+3. **Frontend integration:** 
+   - Always use `<img src="${API_BASE}/family-users/${user.id}/picture">` for all users.
+   - The backend will handle serving the default image if needed.
+
+### Technical Implementation
+- The backend adds `Cross-Origin-Resource-Policy: cross-origin` and `Content-Type: image/jpeg` headers to all image responses.
+- No local fallback images are needed in the frontend—the backend handles all fallbacks.
+- The image is stored as binary `BYTEA` data in PostgreSQL.
+
 ## Planned/Future Features
 - **Voicemail and Conversation Review:** The system will support storing and serving audio (voicemail) and video recordings for later review. This will likely use a similar approach to image storage, with audio/video data saved as binary (BYTEA) in the database. Further backend and Dockerfile updates (e.g., `ffmpeg` for transcoding) will be considered as needed.
 

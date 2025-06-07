@@ -49,6 +49,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+      - ./assets/default-profile.jpg:/docker-entrypoint-initdb.d/default-profile.jpg
 
 
 volumes:

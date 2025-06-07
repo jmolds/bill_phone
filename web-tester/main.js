@@ -39219,12 +39219,12 @@
     )))))))), /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontSize: 12, color: "#666", marginTop: 4 } }, "Selected: ", DAYS.map((day2) => (availability[day2] || []).length ? `${day2}: ${availability[day2].join(", ")}` : null).filter(Boolean).join(" | ") || "None"))), /* @__PURE__ */ import_react14.default.createElement("button", { type: "submit" }, "Submit Profile")), /* @__PURE__ */ import_react14.default.createElement("div", { style: { marginTop: 32 } }, /* @__PURE__ */ import_react14.default.createElement("h3", null, "Family Users"), loading && /* @__PURE__ */ import_react14.default.createElement("div", null, "Loading..."), error && /* @__PURE__ */ import_react14.default.createElement("div", { style: { color: "red" } }, error), /* @__PURE__ */ import_react14.default.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 16 } }, users.map((user) => /* @__PURE__ */ import_react14.default.createElement("div", { key: user.id, style: { border: "1px solid #ccc", borderRadius: 8, padding: 8, minWidth: 180, textAlign: "center", background: "#fafafa" } }, user.id && /* @__PURE__ */ import_react14.default.createElement(
       "img",
       {
-        src: user.id ? `${API_BASE}/family-users/${user.id}/picture` : void 0,
+        src: `${API_BASE}/family-users/${user.id}/picture`,
         alt: user.name,
         style: { width: 64, height: 64, borderRadius: "50%", objectFit: "cover", marginBottom: 8 },
         onError: (e) => {
           e.target.onerror = null;
-          e.target.src = user.picture_url || "";
+          e.target.src = "/assets/default-profile.png";
         }
       }
     ), /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontWeight: "bold" } }, user.name), /* @__PURE__ */ import_react14.default.createElement("div", { style: { fontSize: 12, color: "#555", marginTop: 4 } }, user.availability && typeof user.availability === "object" && Object.values(user.availability).some((arr) => arr.length) ? Object.entries(user.availability).map(
