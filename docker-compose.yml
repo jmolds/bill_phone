@@ -9,11 +9,32 @@ services:
     depends_on:
       - db
     environment:
+      # Database Configuration (EXISTING - KEEP THESE)
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      
+      # ADD THESE - Missing environment variables for production mode & iOS
+      - NODE_ENV=${NODE_ENV:-production}              # THIS WAS MISSING!
+      - PORT=${PORT:-3000}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
+      - TURN_URLS=${TURN_URLS}                        # iOS WebRTC needs this
+      - TURN_USERNAME=${TURN_USERNAME}                # iOS WebRTC needs this  
+      - TURN_PASSWORD=${TURN_PASSWORD}                # iOS WebRTC needs this
+      - SESSION_SECRET=${SESSION_SECRET}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - MAX_CONNECTIONS_PER_MINUTE=${MAX_CONNECTIONS_PER_MINUTE:-20}
+      - CONNECTION_WINDOW_MS=${CONNECTION_WINDOW_MS:-60000}
+      - CORS_ALLOW_CREDENTIALS=${CORS_ALLOW_CREDENTIALS:-true}
+      - CORS_MAX_AGE=${CORS_MAX_AGE:-86400}
+      - WS_PING_TIMEOUT=${WS_PING_TIMEOUT:-30000}
+      - WS_PING_INTERVAL=${WS_PING_INTERVAL:-25000}
+      - WS_CONNECTION_TIMEOUT=${WS_CONNECTION_TIMEOUT:-60000}
+      - IOS_CONNECTION_TIMEOUT=${IOS_CONNECTION_TIMEOUT:-60000}
+      - IOS_HEARTBEAT_INTERVAL=${IOS_HEARTBEAT_INTERVAL:-30000}
+      - IOS_FALLBACK_ENABLED=${IOS_FALLBACK_ENABLED:-true}
     volumes:
       - .:/app
       - /app/node_modules
@@ -50,7 +71,6 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
       - ./assets/default-profile.jpg:/docker-entrypoint-initdb.d/default-profile.jpg
-
 
 volumes:
   pgdata:

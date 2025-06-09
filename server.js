@@ -1,6 +1,7 @@
 /**
  * WebRTC Signaling Server for Bill's Phone App
  * Modern implementation with security best practices and iOS compatibility
+ * Enhanced with environment variable validation
  */
 
 // TODO: Future: Add support for multi-person calls with Bill (group calls)
@@ -12,14 +13,44 @@ const cors = require('cors');
 const helmet = require('helmet');
 const { createLogger, format, transports } = require('winston');
 
-// Environment variables with defaults
+// Environment variables with validation and fallbacks
 const PORT = process.env.PORT || 3000;
-const NODE_ENV = process.env.NODE_ENV || 'development';
+const NODE_ENV = process.env.NODE_ENV || 'production';
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS ? 
   process.env.ALLOWED_ORIGINS.split(',') : 
   ['http://localhost:19000', 'http://localhost:19001', 'http://localhost:3000', 'https://api.justinmolds.com', 'null'];
 
-// Configure logger
+// Enhanced environment variable checking with logging
+const envConfig = {
+  // Server Configuration
+  PORT: { value: PORT, source: process.env.PORT ? 'env' : 'default', required: false },
+  NODE_ENV: { value: NODE_ENV, source: process.env.NODE_ENV ? 'env' : 'default', required: false },
+  ALLOWED_ORIGINS: { value: ALLOWED_ORIGINS, source: process.env.ALLOWED_ORIGINS ? 'env' : 'default', required: false },
+  
+  // Database Configuration (CRITICAL)
+  POSTGRES_HOST: { value: process.env.POSTGRES_HOST, source: process.env.POSTGRES_HOST ? 'env' : 'missing', required: true },
+  POSTGRES_PORT: { value: process.env.POSTGRES_PORT || 5432, source: process.env.POSTGRES_PORT ? 'env' : 'default', required: false },
+  POSTGRES_DB: { value: process.env.POSTGRES_DB, source: process.env.POSTGRES_DB ? 'env' : 'missing', required: true },
+  POSTGRES_USER: { value: process.env.POSTGRES_USER, source: process.env.POSTGRES_USER ? 'env' : 'missing', required: true },
+  POSTGRES_PASSWORD: { value: process.env.POSTGRES_PASSWORD, source: process.env.POSTGRES_PASSWORD ? 'env' : 'missing', required: true },
+  
+  // TURN Server Configuration (CRITICAL for iOS)
+  TURN_URLS: { value: process.env.TURN_URLS, source: process.env.TURN_URLS ? 'env' : 'missing', required: true },
+  TURN_USERNAME: { value: process.env.TURN_USERNAME, source: process.env.TURN_USERNAME ? 'env' : 'missing', required: true },
+  TURN_PASSWORD: { value: process.env.TURN_PASSWORD, source: process.env.TURN_PASSWORD ? 'env' : 'missing', required: true },
+  
+  // Security Configuration
+  SESSION_SECRET: { value: process.env.SESSION_SECRET, source: process.env.SESSION_SECRET ? 'env' : 'missing', required: true },
+  
+  // iOS Enhancement Configuration
+  MAX_CONNECTIONS_PER_MINUTE: { value: process.env.MAX_CONNECTIONS_PER_MINUTE || 20, source: process.env.MAX_CONNECTIONS_PER_MINUTE ? 'env' : 'default', required: false },
+  CONNECTION_WINDOW_MS: { value: process.env.CONNECTION_WINDOW_MS || 60000, source: process.env.CONNECTION_WINDOW_MS ? 'env' : 'default', required: false },
+  WS_PING_TIMEOUT: { value: process.env.WS_PING_TIMEOUT || 30000, source: process.env.WS_PING_TIMEOUT ? 'env' : 'default', required: false },
+  WS_PING_INTERVAL: { value: process.env.WS_PING_INTERVAL || 25000, source: process.env.WS_PING_INTERVAL ? 'env' : 'default', required: false },
+  IOS_CONNECTION_TIMEOUT: { value: process.env.IOS_CONNECTION_TIMEOUT || 60000, source: process.env.IOS_CONNECTION_TIMEOUT ? 'env' : 'default', required: false },
+};
+
+// Configure logger (before validation so we can log config issues)
 const logger = createLogger({
   level: NODE_ENV === 'production' ? 'info' : 'debug',
   format: format.combine(
@@ -33,6 +64,70 @@ const logger = createLogger({
     new transports.File({ filename: 'signaling-server.log' })
   ],
 });
+
+// Validate environment configuration on startup
+function validateEnvironmentConfig() {
+  logger.info('🔧 Validating environment configuration...');
+  
+  const missingRequired = [];
+  const usingDefaults = [];
+  const configuredFromEnv = [];
+  
+  Object.entries(envConfig).forEach(([key, config]) => {
+    if (config.required && config.source === 'missing') {
+      missingRequired.push(key);
+    } else if (config.source === 'default') {
+      usingDefaults.push({ key, value: config.value });
+    } else if (config.source === 'env') {
+      configuredFromEnv.push(key);
+    }
+  });
+  
+  // Log configuration status
+  if (configuredFromEnv.length > 0) {
+    logger.info(`✅ Environment variables configured: ${configuredFromEnv.join(', ')}`);
+  }
+  
+  if (usingDefaults.length > 0) {
+    logger.info('📋 Using default values for:');
+    usingDefaults.forEach(({ key, value }) => {
+      logger.info(`   ${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`);
+    });
+  }
+  
+  if (missingRequired.length > 0) {
+    logger.error('❌ CRITICAL: Missing required environment variables:');
+    missingRequired.forEach(key => {
+      logger.error(`   ${key}: REQUIRED but not set`);
+    });
+    logger.error('🚨 Server cannot start without required configuration');
+    logger.error('💡 Please check your .env file and docker-compose.yml');
+    process.exit(1);
+  }
+  
+  // Log environment mode and key settings
+  logger.info(`🚀 Server starting in ${NODE_ENV} mode`);
+  logger.info(`🌐 Server will listen on port ${PORT}`);
+  logger.info(`🔄 TURN server configured: ${envConfig.TURN_URLS.value ? '✅' : '❌'}`);
+  logger.info(`🗄️  Database configured: ${envConfig.POSTGRES_HOST.value ? '✅' : '❌'}`);
+  
+  // iOS-specific configuration summary
+  if (NODE_ENV === 'production') {
+    logger.info('📱 iOS optimizations enabled:');
+    logger.info(`   Connection timeout: ${envConfig.IOS_CONNECTION_TIMEOUT.value}ms`);
+    logger.info(`   Max connections/min: ${envConfig.MAX_CONNECTIONS_PER_MINUTE.value}`);
+    logger.info(`   WebSocket ping timeout: ${envConfig.WS_PING_TIMEOUT.value}ms`);
+  }
+  
+  logger.info('✅ Environment validation complete');
+}
+
+// Run validation before starting server
+validateEnvironmentConfig();
+
+// Use validated environment variables
+const MAX_CONNECTIONS_PER_MINUTE = envConfig.MAX_CONNECTIONS_PER_MINUTE.value;
+const CONNECTION_WINDOW_MS = envConfig.CONNECTION_WINDOW_MS.value;
 
 // Initialize Express app with security middleware
 const app = express();
@@ -90,14 +185,14 @@ app.use(express.urlencoded({ extended: true, limit: '30mb' }));
 // Create HTTP server
 const server = http.createServer(app);
 
-// Enhanced Socket.IO configuration for iOS compatibility
+// Enhanced Socket.IO configuration for iOS compatibility using validated env vars
 const io = new Server(server, {
   cors: corsOptions,
   
-  // Connection timeouts - more lenient for mobile
-  connectTimeout: 60000, // 60 seconds
-  pingTimeout: 30000,    // 30 seconds  
-  pingInterval: 25000,   // 25 seconds
+  // Connection timeouts - using environment configuration
+  connectTimeout: envConfig.IOS_CONNECTION_TIMEOUT.value,
+  pingTimeout: envConfig.WS_PING_TIMEOUT.value,
+  pingInterval: envConfig.WS_PING_INTERVAL.value,
   
   // Transport configuration - prioritize polling for iOS reliability
   transports: ['polling', 'websocket'],
@@ -129,10 +224,8 @@ const io = new Server(server, {
 // Store active connections with additional metadata
 const connectedUsers = new Map();
 
-// Rate limiting for connection attempts
+// Rate limiting for connection attempts (using environment configuration)
 const connectionAttempts = new Map();
-const MAX_CONNECTIONS_PER_MINUTE = 10;
-const CONNECTION_WINDOW_MS = 60000; // 1 minute
 
 // Helper function to get target socket
 const getTargetSocket = (targetId) => {
@@ -367,11 +460,11 @@ const { Pool } = require('pg');
 const { v4: uuidv4 } = require('uuid');
 
 const dbPool = new Pool({
-  host: process.env.POSTGRES_HOST || 'localhost',
-  port: process.env.POSTGRES_PORT || 5432,
-  database: process.env.POSTGRES_DB || 'billphone',
-  user: process.env.POSTGRES_USER || 'billuser',
-  password: process.env.POSTGRES_PASSWORD || 'secretpassword',
+  host: envConfig.POSTGRES_HOST.value,
+  port: envConfig.POSTGRES_PORT.value,
+  database: envConfig.POSTGRES_DB.value,
+  user: envConfig.POSTGRES_USER.value,
+  password: envConfig.POSTGRES_PASSWORD.value,
   max: 5,
 });
 
@@ -772,6 +865,32 @@ app.get('/health', (req, res) => {
     iosConnections: iosConnections,
     serverUptime: process.uptime()
   });
+});
+
+// Add configuration endpoint for debugging
+app.get('/debug/config', (req, res) => {
+  const configSummary = {
+    environment: NODE_ENV,
+    port: PORT,
+    timestamp: new Date().toISOString(),
+    configuration: {
+      database: {
+        host: envConfig.POSTGRES_HOST.source,
+        configured: envConfig.POSTGRES_HOST.source === 'env'
+      },
+      turnServer: {
+        urls: envConfig.TURN_URLS.source,
+        configured: envConfig.TURN_URLS.source === 'env'
+      },
+      iosOptimizations: {
+        connectionTimeout: `${envConfig.IOS_CONNECTION_TIMEOUT.value}ms (${envConfig.IOS_CONNECTION_TIMEOUT.source})`,
+        maxConnections: `${envConfig.MAX_CONNECTIONS_PER_MINUTE.value}/min (${envConfig.MAX_CONNECTIONS_PER_MINUTE.source})`,
+        wsTimeout: `${envConfig.WS_PING_TIMEOUT.value}ms (${envConfig.WS_PING_TIMEOUT.source})`
+      }
+    }
+  };
+  
+  res.json(configSummary);
 });
 
 // iOS-specific debug endpoint
