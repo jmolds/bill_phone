@@ -1,16 +1,16 @@
 {
-  "android": {
-    "package": "com.anonymous.billphone"
-  },
-  "extra": {
-    "eas": {
-      "projectId": "bb8a8077-721a-4c3b-a7fb-68ad94d32cb9"
-    }
-  },
   "expo": {
+    "name": "Bill's Phone",
+    "slug": "bill-phone",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "bundleIdentifier": "com.anonymous.billphone",
       "buildNumber": "7",
+      "supportsTablet": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "Bill's Phone needs access to your camera to make and receive video calls.",
@@ -21,16 +21,18 @@
         "policy": "appVersion"
       }
     },
+
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
     "extra": {
       "eas": {
         "projectId": "bb8a8077-721a-4c3b-a7fb-68ad94d32cb9"
       }
     },
     "updates": {
-      "url": "https://u.expo.dev/bb8a8077-721a-4c3b-a7fb-68ad94d32cb9"
-    },
-    "android": {
-      "runtimeVersion": "1.0.0"
+      "url": "https://u.expo.dev/bb8a8077-721a-4c3b-a7fb-68ad94d32cb9",
+      "fallbackToCacheTimeout": 0
     }
   }
 }

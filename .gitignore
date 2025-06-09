@@ -1,3 +1,13 @@
 node_modules
 .env
 turnserver.conf
+
+# Expo related
+/android
+/ios
+.expo/
+dist/
+web-build/
+
+# Local development
+.DS_Store

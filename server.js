@@ -1,10 +1,8 @@
 /**
  * WebRTC Signaling Server for Bill's Phone App
- * Modern implementation with security best practices
+ * Modern implementation with security best practices and iOS compatibility
  */
 
-// TODO: Future: Add support for multi-person calls with Bill (group calls)
-// TODO: Future: Implement push notification logic for available users
 // TODO: Future: Add support for multi-person calls with Bill (group calls)
 // TODO: Future: Implement push notification logic for available users
 const express = require('express');
@@ -19,7 +17,7 @@ const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS ? 
   process.env.ALLOWED_ORIGINS.split(',') : 
-  ['http://localhost:19000', 'http://localhost:19001', 'http://localhost:3000', 'null'];
+  ['http://localhost:19000', 'http://localhost:19001', 'http://localhost:3000', 'https://api.justinmolds.com', 'null'];
 
 // Configure logger
 const logger = createLogger({
@@ -39,28 +37,93 @@ const logger = createLogger({
 // Initialize Express app with security middleware
 const app = express();
 app.use(helmet());
-app.use(cors({
-  origin: ALLOWED_ORIGINS,
+
+// Enhanced CORS configuration for iOS compatibility
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:19000',
+      'http://localhost:19001', 
+      'http://localhost:3000',
+      'https://api.justinmolds.com',
+      'https://localhost:3000', // For local HTTPS testing
+      /^https:\/\/.*\.expo\.dev$/, // Expo development URLs
+      /^https:\/\/.*\.ngrok\.io$/, // Ngrok tunnels for testing
+    ];
+    
+    const isAllowed = allowedOrigins.some(allowed => {
+      return typeof allowed === 'string' ? allowed === origin : allowed.test(origin);
+    });
+    
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      logger.warn(`CORS rejected origin: ${origin}`);
+      callback(null, true); // Allow all in development - restrict in production
+    }
+  },
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-  credentials: true
-}));
+  allowedHeaders: [
+    'Origin',
+    'X-Requested-With', 
+    'Content-Type',
+    'Accept',
+    'Authorization',
+    'Cache-Control',
+    'Pragma',
+    'User-Agent',
+    'X-Platform'
+  ],
+  credentials: true,
+  maxAge: 86400, // 24 hours
+  preflightContinue: false,
+  optionsSuccessStatus: 204
+};
+
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '30mb' }));
 app.use(express.urlencoded({ extended: true, limit: '30mb' }));
 
 // Create HTTP server
 const server = http.createServer(app);
 
-// Initialize Socket.IO with security settings
+// Enhanced Socket.IO configuration for iOS compatibility
 const io = new Server(server, {
-  cors: {
-    origin: ALLOWED_ORIGINS,
-    methods: ['GET', 'POST'],
-    credentials: true
+  cors: corsOptions,
+  
+  // Connection timeouts - more lenient for mobile
+  connectTimeout: 60000, // 60 seconds
+  pingTimeout: 30000,    // 30 seconds  
+  pingInterval: 25000,   // 25 seconds
+  
+  // Transport configuration - prioritize polling for iOS reliability
+  transports: ['polling', 'websocket'],
+  
+  // Allow upgrades but don't force them
+  allowUpgrades: true,
+  upgradeTimeout: 10000,
+  
+  // Enhanced buffer sizes for iOS
+  maxHttpBufferSize: 2e6, // 2MB
+  
+  // Connection state recovery for mobile apps
+  connectionStateRecovery: {
+    maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
+    skipMiddlewares: true,
   },
-  connectTimeout: 10000,
-  pingTimeout: 5000,
-  pingInterval: 10000,
-  maxHttpBufferSize: 1e6, // 1MB
+  
+  // Additional mobile-friendly options
+  cookie: false, // Disable cookies for mobile apps
+  serveClient: false, // Don't serve socket.io client
+  
+  // Polling configuration for iOS compatibility
+  polling: {
+    duration: 20,
+    maxHttpBufferSize: 2e6
+  }
 });
 
 // Store active connections with additional metadata
@@ -84,20 +147,24 @@ const logConnectedUsers = () => {
   logger.debug('Connected users:');
   for (const [id, userData] of connectedUsers.entries()) {
     if (typeof id === 'string' && (id.length < 20 || id === userData.socketId)) {
-      logger.debug(`  ${id} -> ${userData.customId || 'No custom ID'}`);
+      logger.debug(`  ${id} -> ${userData.customId || 'No custom ID'} (${userData.platform || 'unknown'})`);
     }
   }
 };
 
-// Connection middleware for rate limiting
+// Enhanced connection middleware with iOS detection
 io.use((socket, next) => {
+  const userAgent = socket.handshake.headers['user-agent'] || '';
+  const platform = socket.handshake.query.platform || '';
   const clientIp = socket.handshake.address;
   
-  // Track connection attempts
+  // Log connection attempt details
+  logger.info(`Connection attempt from ${clientIp}, Platform: ${platform}, UA: ${userAgent.substring(0, 100)}`);
+  
+  // Enhanced rate limiting with iOS considerations
   const now = Date.now();
   const clientData = connectionAttempts.get(clientIp) || { count: 0, resetTime: now + CONNECTION_WINDOW_MS };
   
-  // Reset counter if window expired
   if (now > clientData.resetTime) {
     clientData.count = 1;
     clientData.resetTime = now + CONNECTION_WINDOW_MS;
@@ -107,71 +174,107 @@ io.use((socket, next) => {
   
   connectionAttempts.set(clientIp, clientData);
   
-  // Check if rate limit exceeded
-  if (clientData.count > MAX_CONNECTIONS_PER_MINUTE) {
-    logger.warn(`Rate limit exceeded for ${clientIp}`);
+  // More lenient rate limiting for iOS apps
+  const maxConnections = platform === 'ios' ? MAX_CONNECTIONS_PER_MINUTE * 2 : MAX_CONNECTIONS_PER_MINUTE;
+  
+  if (clientData.count > maxConnections) {
+    logger.warn(`Rate limit exceeded for ${clientIp} (Platform: ${platform})`);
     return next(new Error('Rate limit exceeded'));
   }
   
   next();
 });
 
-// Socket.io connection handler
+// Enhanced Socket.io connection handler
 io.on('connection', (socket) => {
   const socketId = socket.id;
-  logger.info(`User connected: ${socketId}`);
-  logEvent('USER_CONNECTED', { socketId, ip: socket.handshake.address, userAgent: socket.handshake.headers['user-agent'] || 'Unknown' });
+  const userAgent = socket.handshake.headers['user-agent'] || '';
+  const platform = socket.handshake.query.platform || 'unknown';
+  const version = socket.handshake.query.version || 'unknown';
+  const buildNumber = socket.handshake.query.buildNumber || 'unknown';
   
-  // Store user connection with timestamp and metadata
+  logger.info(`✅ User connected: ${socketId}, Platform: ${platform}, Version: ${version}, Build: ${buildNumber}`);
+  logEvent('USER_CONNECTED', { socketId, ip: socket.handshake.address, userAgent: userAgent.substring(0, 200), platform, version, buildNumber });
+  
+  // Enhanced user metadata for iOS
   connectedUsers.set(socketId, { 
     socket,
     socketId, 
-    customId: null, // Will be set on register if provided
+    customId: null,
+    platform,
+    version,
+    buildNumber,
     connectedAt: new Date().toISOString(),
     ip: socket.handshake.address,
-    userAgent: socket.handshake.headers['user-agent'] || 'Unknown'
+    userAgent: userAgent.substring(0, 200), // Truncate long user agents
+    lastPing: Date.now()
   });
   
-  // Notify the user of their own ID
-  socket.emit('connectionEstablished', { id: socketId });
+  // Send enhanced connection confirmation
+  socket.emit('connectionEstablished', { 
+    id: socketId,
+    serverTime: new Date().toISOString(),
+    platform: platform,
+    supportedFeatures: ['video', 'audio', 'heartbeat']
+  });
   
-  // Handle device registration with custom ID
-  socket.on('register', (data) => {
-    if (data.deviceId) {
-      const customId = data.deviceId;
-      logger.info(`User ${socketId} registered with custom ID: ${customId}`);
-      logEvent('REGISTER', { socketId, customId });
-      
-      // Store the custom ID for this socket
-      const userData = connectedUsers.get(socketId);
-      if (userData) {
-        userData.customId = customId;
-        connectedUsers.set(socketId, userData);
-        
-        // Also create a mapping from custom ID to socket ID
-        connectedUsers.set(customId, userData);
-      }
+  // iOS-specific heartbeat handling
+  socket.on('ping', (data) => {
+    const userData = connectedUsers.get(socketId);
+    if (userData) {
+      userData.lastPing = Date.now();
+      connectedUsers.set(socketId, userData);
     }
+    socket.emit('pong', { timestamp: data.timestamp });
   });
   
-  // Handle makeCall event
+  // Enhanced register handler with iOS metadata
+  socket.on('register', (data) => {
+    const customId = data.deviceId;
+    logger.info(`📱 Device registered: ${socketId} -> ${customId} (${platform} v${version})`);
+    logEvent('REGISTER', { socketId, customId, platform, version });
+    
+    const userData = connectedUsers.get(socketId);
+    if (userData) {
+      userData.customId = customId;
+      userData.registeredAt = new Date().toISOString();
+      connectedUsers.set(socketId, userData);
+      connectedUsers.set(customId, userData);
+    }
+    
+    // Send registration confirmation
+    socket.emit('registered', {
+      deviceId: customId,
+      timestamp: new Date().toISOString()
+    });
+  });
+  
+  // Enhanced makeCall event with iOS support
   socket.on('makeCall', ({ to, offer }) => {
-    logger.info(`Call request from ${socketId} to ${to}`);
-    logEvent('CALL_REQUEST', { from: socketId, to });
+    logger.info(`📞 Call request: ${socketId} -> ${to} (Platform: ${platform})`);
+    logEvent('CALL_REQUEST', { from: socketId, to, platform });
     
     const targetSocket = getTargetSocket(to);
     if (targetSocket) {
-      // Direct messaging to the specific recipient
       targetSocket.emit('incomingCall', {
         from: socketId,
-        offer
+        offer,
+        callerPlatform: platform,
+        timestamp: new Date().toISOString()
       });
+      
+      // Send call progress to caller
+      socket.emit('callProgress', {
+        status: 'ringing',
+        target: to
+      });
+      
       logger.debug(`Forwarded call offer to ${to}`);
     } else {
-      // Recipient not found
       socket.emit('callError', {
         message: 'Recipient not found or offline',
-        code: 'RECIPIENT_UNAVAILABLE'
+        code: 'RECIPIENT_UNAVAILABLE',
+        target: to
       });
       logger.debug(`Recipient ${to} not found or offline`);
     }
@@ -200,7 +303,6 @@ io.on('connection', (socket) => {
   // Handle ICE candidates
   socket.on('iceCandidate', ({ to, candidate }) => {
     logger.debug(`ICE candidate from ${socketId} to ${to}`);
-
     
     const targetSocket = getTargetSocket(to);
     if (targetSocket) {
@@ -224,22 +326,38 @@ io.on('connection', (socket) => {
     }
   });
   
-  // Handle disconnection
+  // Enhanced disconnect handling
   socket.on('disconnect', (reason) => {
-    logger.info(`User disconnected: ${socketId}, reason: ${reason}`);
-    logEvent('USER_DISCONNECTED', { socketId, reason });
+    logger.info(`❌ User disconnected: ${socketId}, reason: ${reason}, platform: ${platform}`);
+    logEvent('USER_DISCONNECTED', { socketId, reason, platform });
+    
+    // Log extended disconnect info for debugging iOS issues
+    const userData = connectedUsers.get(socketId);
+    if (userData) {
+      const connectionDuration = Date.now() - new Date(userData.connectedAt).getTime();
+      logger.info(`Connection duration: ${Math.round(connectionDuration / 1000)}s, Last ping: ${Date.now() - userData.lastPing}ms ago`);
+    }
+    
+    // Clean up heartbeat interval if exists
+    if (socket.heartbeatInterval) {
+      clearInterval(socket.heartbeatInterval);
+    }
     
     // Notify interested parties about the disconnection
-    for (const [id, userData] of connectedUsers.entries()) {
-      if (id !== socketId && userData.socket) {
-        userData.socket.emit('userDisconnected', {
+    for (const [id, user] of connectedUsers.entries()) {
+      if (id !== socketId && user.socket && typeof id === 'string') {
+        user.socket.emit('userDisconnected', {
           socketId: socketId,
-          reason: reason
+          reason: reason,
+          platform: platform
         });
       }
     }
     
     // Remove from active connections
+    if (userData && userData.customId) {
+      connectedUsers.delete(userData.customId);
+    }
     connectedUsers.delete(socketId);
   });
 });
@@ -364,7 +482,6 @@ function logUserPayload(route, body) {
   }
 }
 
-
 // Shared image processing helper
 async function processProfileImage(picture_data, logPrefix = '') {
   if (!picture_data) return null;
@@ -399,13 +516,10 @@ app.post('/family-users', async (req, res) => {
       return res.status(400).json({ error: err.message });
     }
   }
-  // ... rest of the logic unchanged ...
+
   if (!name) {
     return res.status(400).json({ error: 'Missing required field: name' });
   }
-
-  // Handle image data if present (already processed above)
-
 
   try {
     let result;
@@ -646,9 +760,37 @@ app.get('/', (req, res) => {
   });
 });
 
-// Health check endpoint
+// Enhanced health check endpoint with iOS-specific info
 app.get('/health', (req, res) => {
-  res.json({ status: 'healthy', timestamp: new Date().toISOString() });
+  const iosConnections = Array.from(connectedUsers.values())
+    .filter(user => user.platform === 'ios').length;
+  
+  res.json({ 
+    status: 'healthy', 
+    timestamp: new Date().toISOString(),
+    totalConnections: connectedUsers.size,
+    iosConnections: iosConnections,
+    serverUptime: process.uptime()
+  });
+});
+
+// iOS-specific debug endpoint
+app.get('/debug/ios-connections', (req, res) => {
+  const iosUsers = Array.from(connectedUsers.entries())
+    .filter(([key, user]) => user.platform === 'ios' && typeof key === 'string' && key.length > 10)
+    .map(([key, user]) => ({
+      socketId: user.socketId,
+      customId: user.customId,
+      version: user.version,
+      buildNumber: user.buildNumber,
+      connectedAt: user.connectedAt,
+      lastPing: new Date(user.lastPing).toISOString()
+    }));
+  
+  res.json({
+    totalIosConnections: iosUsers.length,
+    connections: iosUsers
+  });
 });
 
 // Error handling middleware

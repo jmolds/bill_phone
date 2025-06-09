@@ -30,6 +30,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  * 
  * A unified tester app that can function as either Bill's phone or the family caller.
  * User can select which role they want to play, and the app will behave accordingly.
+ * Enhanced with iOS production compatibility fixes.
  */
 const WebRTCRoleTester = () => {
   // State - Role selection
@@ -46,8 +47,8 @@ const WebRTCRoleTester = () => {
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
   const [logs, setLogs] = useState([]);
-const remoteVideoRef = useRef(null);
-const [mediaDevicesInfo, setMediaDevicesInfo] = useState([]); // For device enumeration
+  const remoteVideoRef = useRef(null);
+  const [mediaDevicesInfo, setMediaDevicesInfo] = useState([]); // For device enumeration
 
   const [canAutoAnswer, setCanAutoAnswer] = useState(role === 'bills-iphone');
   const [speakerEnabled, setSpeakerEnabled] = useState(true);
@@ -138,12 +139,6 @@ const [mediaDevicesInfo, setMediaDevicesInfo] = useState([]); // For device enum
     } catch (err) {
       log('Error enumerating devices: ' + err.message);
     }
-  };
-    const timestamp = new Date().toLocaleTimeString();
-    const logEntry = `${timestamp}: ${message}`;
-    console.log(logEntry);
-    logsRef.current = [...logsRef.current, logEntry];
-    setLogs([...logsRef.current]);
   };
   
   // Enable speaker phone
@@ -238,81 +233,212 @@ const [mediaDevicesInfo, setMediaDevicesInfo] = useState([]); // For device enum
     }
   };
 
-  // Connect to signaling server
+  // Enhanced iOS-compatible connection to signaling server
   const connectToSignalingServer = () => {
     log(`Connecting to signaling server as ${role}...`);
     setConnectionStatus('Connecting...');
 
     try {
-      // Try both websocket and polling
-      socketRef.current = io(SERVER_URL, {
-        transports: ['websocket', 'polling'],
+      // Enhanced socket.io options specifically for iOS production builds
+      const socketOptions = {
+        // Transport configuration - prioritize polling for iOS reliability
+        transports: ['polling', 'websocket'],
+        
+        // Connection settings
         reconnection: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000,
-        timeout: 10000,
-      });
+        reconnectionAttempts: 10,
+        reconnectionDelay: 2000,
+        reconnectionDelayMax: 10000,
+        timeout: 30000,
+        
+        // iOS-specific security settings
+        secure: true,
+        rejectUnauthorized: false, // Allow self-signed certs in dev
+        
+        // Force new connection to avoid iOS caching issues
+        forceNew: true,
+        
+        // Headers for iOS compatibility
+        extraHeaders: {
+          'Origin': 'https://api.justinmolds.com',
+          'User-Agent': `BillsPhone-iOS/${Constants.expoConfig?.version || '1.0.0'}`,
+          'X-Platform': 'iOS-Production'
+        },
+        
+        // Query parameters for server-side identification
+        query: {
+          platform: 'ios',
+          version: Constants.expoConfig?.version || '1.0.0',
+          buildNumber: Constants.expoConfig?.ios?.buildNumber || '7'
+        },
+        
+        // Upgrade settings for WebSocket
+        upgrade: true,
+        rememberUpgrade: false,
+        
+        // Additional iOS-specific options
+        jsonp: false,
+        withCredentials: true,
+        
+        // Polling configuration for fallback
+        pollingTimeout: 10000,
+        
+        // Auto-connect settings
+        autoConnect: true
+      };
 
+      log(`Attempting connection to ${SERVER_URL} with iOS-optimized options...`);
+      
+      socketRef.current = io(SERVER_URL, socketOptions);
+      
       setupSocketEvents();
 
-      // Fallback to polling if websocket fails
-      setTimeout(() => {
+      // iOS-specific connection monitoring
+      const connectionTimeout = setTimeout(() => {
         if (connectionStatus === 'Connecting...' && socketRef.current) {
-          log('Connection not established, trying polling transport only...');
+          log('Initial connection timeout, attempting polling-only fallback...');
+          
+          // Disconnect current attempt
           socketRef.current.disconnect();
           
+          // Try polling-only mode for iOS
           socketRef.current = io(SERVER_URL, {
-            transports: ['polling'],
-            reconnection: true,
-            reconnectionAttempts: 5,
-            reconnectionDelay: 1000,
-            timeout: 10000,
+            ...socketOptions,
+            transports: ['polling'], // Polling only
+            timeout: 15000,
+            reconnectionDelay: 1000
           });
           
           setupSocketEvents();
         }
-      }, 5000);
+      }, 8000);
+
+      // Clear timeout on successful connection
+      socketRef.current.on('connect', () => {
+        clearTimeout(connectionTimeout);
+      });
+
+      // Enhanced error handling for iOS
+      socketRef.current.on('connect_error', (error) => {
+        clearTimeout(connectionTimeout);
+        log(`Connection error: ${error.message || error.toString()}`);
+        
+        // iOS-specific error handling
+        if (error.message?.includes('xhr poll error') || 
+            error.message?.includes('websocket error')) {
+          log('Detected iOS-specific connection error, will retry with different transport...');
+          
+          // Schedule retry with different configuration
+          setTimeout(() => {
+            if (connectionStatus !== 'Connected') {
+              retryConnectionWithFallback();
+            }
+          }, 3000);
+        }
+      });
+
     } catch (error) {
-      log(`Connection error: ${error.message}`);
+      log(`Connection initialization error: ${error.message}`);
       setConnectionStatus('Connection Failed');
     }
   };
 
-  // Setup socket event handlers
+  // Fallback connection retry function for iOS
+  const retryConnectionWithFallback = () => {
+    log('Attempting fallback connection method for iOS...');
+    
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+    }
+    
+    // Ultra-conservative settings for iOS
+    const fallbackOptions = {
+      transports: ['polling'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 3000,
+      timeout: 20000,
+      forceNew: true,
+      secure: true,
+      rejectUnauthorized: false,
+      extraHeaders: {
+        'Accept': '*/*',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      }
+    };
+    
+    socketRef.current = io(SERVER_URL, fallbackOptions);
+    setupSocketEvents();
+  };
+
+  // Enhanced socket event setup with iOS considerations
   const setupSocketEvents = () => {
-  detachSocketEvents(); // Remove all previous event listeners before adding new ones
+    detachSocketEvents();
     const socket = socketRef.current;
 
     socket.on('connect', () => {
-      log('Connected to signaling server');
+      log('✅ Connected to signaling server successfully');
       setConnectionStatus('Connected');
 
-      // Register device ID
-      socket.emit('register', { deviceId: role });
-      log(`Registered as: ${role}, targeting: ${targetId}`);
+      // Register device with additional iOS metadata
+      const registrationData = {
+        deviceId: role,
+        platform: 'ios',
+        version: Constants.expoConfig?.version || '1.0.0',
+        buildNumber: Constants.expoConfig?.ios?.buildNumber || '7',
+        timestamp: new Date().toISOString()
+      };
+      
+      socket.emit('register', registrationData);
+      log(`Registered as: ${role} with iOS metadata`);
 
-      // Send a second registration after a delay (helps with stability)
-      setTimeout(() => {
-        socket.emit('register', { deviceId: role });
-        log('Re-registered to ensure connection');
-      }, 1000);
+      // Send heartbeat to maintain connection
+      const heartbeatInterval = setInterval(() => {
+        if (socket.connected) {
+          socket.emit('ping', { timestamp: Date.now() });
+        } else {
+          clearInterval(heartbeatInterval);
+        }
+      }, 30000); // Every 30 seconds
+
+      // Store interval for cleanup
+      socket.heartbeatInterval = heartbeatInterval;
     });
 
     socket.on('connect_error', (error) => {
-      log(`Connection error: ${error.message || 'Unknown error'}`);
+      log(`❌ Connection error: ${error.message || 'Unknown error'}`);
+      log(`Error details: ${JSON.stringify(error)}`);
       setConnectionStatus('Connection Failed');
     });
 
     socket.on('disconnect', (reason) => {
-      log(`Disconnected: ${reason}`);
+      log(`❌ Disconnected: ${reason}`);
       setConnectionStatus('Disconnected');
+      
+      // Clear heartbeat interval
+      if (socket.heartbeatInterval) {
+        clearInterval(socket.heartbeatInterval);
+        socket.heartbeatInterval = null;
+      }
+      
       if (callStatus !== 'idle') {
         endCall();
       }
     });
 
+    // Add response to ping for connection health
+    socket.on('pong', (data) => {
+      log(`Connection health check: ${Date.now() - data.timestamp}ms`);
+    });
+
+    // Enhanced registration confirmation
+    socket.on('registered', (data) => {
+      log(`✅ Registration confirmed for ${data.deviceId} at ${data.timestamp}`);
+    });
+
     socket.on('incomingCall', async (data) => {
-      log(`Incoming call from: ${data.from}`);
+      log(`Incoming call from: ${data.from} (Platform: ${data.callerPlatform || 'unknown'})`);
       
       // Only accept calls from our target or the other role
       if (data.from === targetId || (data.from !== role)) {
@@ -386,9 +512,23 @@ const [mediaDevicesInfo, setMediaDevicesInfo] = useState([]); // For device enum
       Alert.alert('Call Rejected', 'The other party rejected the call');
       endCall();
     });
+
+    socket.on('callProgress', (data) => {
+      log(`Call progress: ${data.status} to ${data.target}`);
+    });
+
+    socket.on('callError', (data) => {
+      log(`Call error: ${data.message} (${data.code})`);
+      Alert.alert('Call Error', data.message);
+      setCallStatus('idle');
+    });
+
+    socket.on('userDisconnected', (data) => {
+      log(`User disconnected: ${data.socketId} (${data.platform || 'unknown'}) - ${data.reason}`);
+    });
   };
 
-  // Set up WebRTC peer connection
+  // Set up WebRTC peer connection with enhanced TURN configuration
   const setupPeerConnection = async () => {
     await enumerateAndLogDevices(); // Log device info at connection start
     if (peerConnectionRef.current) {
@@ -419,21 +559,30 @@ const [mediaDevicesInfo, setMediaDevicesInfo] = useState([]); // For device enum
       setLocalStream(stream);
       log('Local stream set');
       
-      // Create peer connection
+      // Enhanced peer connection configuration with TURN servers
       const configuration = {
         iceServers: [
-  ...((process.env.TURN_URLS || '').split(',').filter(Boolean).map(url => ({ urls: url.trim(), username: process.env.TURN_USERNAME || 'webrtcuser8888', credential: process.env.TURN_PASSWORD || 'supersecret8888' }))),
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:stun3.l.google.com:19302' },
-  { urls: 'stun:stun4.l.google.com:19302' }
-]
+          // Primary TURN servers from environment
+          ...((process.env.TURN_URLS || 'turn:api.justinmolds.com:3478?transport=udp,turn:api.justinmolds.com:3478?transport=tcp,turns:api.justinmolds.com:5349?transport=tcp').split(',').filter(Boolean).map(url => ({ 
+            urls: url.trim(), 
+            username: process.env.TURN_USERNAME || 'webrtcuser8888', 
+            credential: process.env.TURN_PASSWORD || 'supersecret8888' 
+          }))),
+          // Fallback STUN servers
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun3.l.google.com:19302' },
+          { urls: 'stun:stun4.l.google.com:19302' }
+        ],
+        // Enhanced ICE configuration for iOS
+        iceCandidatePoolSize: 10,
+        iceTransportPolicy: 'all'
       };
       
       const pc = new RTCPeerConnection(configuration);
       peerConnectionRef.current = pc;
-      log('Peer connection created');
+      log('Peer connection created with enhanced TURN configuration');
       
       // Add local stream to peer connection
       stream.getTracks().forEach(track => {
@@ -677,6 +826,11 @@ const [mediaDevicesInfo, setMediaDevicesInfo] = useState([]); // For device enum
     socket.off('iceCandidate');
     socket.off('callEnded');
     socket.off('callRejected');
+    socket.off('registered');
+    socket.off('callProgress');
+    socket.off('callError');
+    socket.off('userDisconnected');
+    socket.off('pong');
   };
 
   // Toggle auto-answer setting
@@ -697,20 +851,6 @@ const [mediaDevicesInfo, setMediaDevicesInfo] = useState([]); // For device enum
     };
     saveRole();
   }, [role]);
-
-  useEffect(() => {
-    const checkForUpdates = async () => {
-      try {
-        const update = await Updates.checkForUpdateAsync();
-        if (update.isAvailable) {
-          setUpdateAvailable(true);
-        }
-      } catch (error) {
-        log(`Error checking for updates: ${error.message}`);
-      }
-    };
-    checkForUpdates();
-  }, []);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -733,24 +873,6 @@ const [mediaDevicesInfo, setMediaDevicesInfo] = useState([]); // For device enum
             <Text style={styles.updateButtonText}>APPLY UPDATE</Text>
           </TouchableOpacity>
         )}
-      </View>
-      
-      {/* Role Selector - Made More Visible */}
-      <View style={styles.roleSelectorBanner}>
-        <Text style={styles.roleBannerText}>
-          Current Role: {role === 'bills-iphone' ? "BILL'S PHONE" : "FAMILY CALLER"}
-        </Text>
-        <TouchableOpacity 
-          style={styles.changeRoleButton}
-          onPress={() => {
-            // Toggle role when pressed
-            const newRole = role === 'bills-iphone' ? 'family-caller' : 'bills-iphone';
-            setRole(newRole);
-            updateTargetId(newRole);
-          }}
-        >
-          <Text style={styles.changeRoleButtonText}>CHANGE ROLE</Text>
-        </TouchableOpacity>
       </View>
       
       <View style={styles.settingsContainer}>
@@ -1101,3 +1223,20 @@ const styles = StyleSheet.create({
 });
 
 export default WebRTCRoleTester;
+      
+      {/* Role Selector - Made More Visible */}
+      <View style={styles.roleSelectorBanner}>
+        <Text style={styles.roleBannerText}>
+          Current Role: {role === 'bills-iphone' ? "BILL'S PHONE" : "FAMILY CALLER"}
+        </Text>
+        <TouchableOpacity 
+          style={styles.changeRoleButton}
+          onPress={() => {
+            // Toggle role when pressed
+            const newRole = role === 'bills-iphone' ? 'family-caller' : 'bills-iphone';
+            handleRoleChange(newRole);
+          }}
+        >
+          <Text style={styles.changeRoleButtonText}>CHANGE ROLE</Text>
+        </TouchableOpacity>
+      </View>
