@@ -876,16 +876,14 @@ app.get('/health', (req, res) => {
 
 // WebRTC configuration endpoint to provide ICE server info
 app.get('/webrtc-config', (req, res) => {
+  // Add CORS headers
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET');
+  
   // Get TURN configuration from environment variables
   const turnUrls = envConfig.TURN_URLS.value.split(',').map(url => url.trim());
   const turnUsername = envConfig.TURN_USERNAME.value;
   const turnPassword = envConfig.TURN_PASSWORD.value;
-  
-  // Debug log the environment variable values
-  console.log('TURN Configuration Variables:');
-  console.log('- TURN_URLS:', turnUrls);
-  console.log('- TURN_USERNAME:', turnUsername);
-  console.log('- TURN_PASSWORD:', turnPassword ? '***[redacted]***' : 'MISSING');
   
   // Create configuration object with TURN and STUN servers
   const rtcConfig = {
@@ -906,13 +904,19 @@ app.get('/webrtc-config', (req, res) => {
   // Ensure CORS is properly set for all origins
   res.set('Access-Control-Allow-Origin', req.header('Origin') || '*');
   res.set('Access-Control-Allow-Credentials', 'true');
-  res.set('Access-Control-Max-Age', '86400');
-  
-  console.log('Sending WebRTC config to client:', JSON.stringify(rtcConfig, null, 2).replace(turnPassword, '***[redacted]***'));
+
+  // Debug log the environment variable values
+  console.log('[WebRTC Config Request] Serving ICE config:');
+  console.log('- TURN_URLS:', turnUrls);
+  console.log('- TURN_USERNAME:', turnUsername);
+  console.log('- TURN_PASSWORD:', turnPassword ? '***[redacted]***' : 'MISSING');
+  console.log('- Client IP:', req.ip);
+  console.log('- User-Agent:', req.get('User-Agent'));
+
   res.json(rtcConfig);
 });
 
-// Debug endpoint for WebRTC config - plain text for easier debugging
+// Debug endpoint for WebRTC config (returns sanitized values for debugging)
 app.get('/debug-webrtc-config', (req, res) => {
   const turnUrls = envConfig.TURN_URLS.value.split(',').map(url => url.trim());
   const turnUsername = envConfig.TURN_USERNAME.value;

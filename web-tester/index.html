@@ -429,14 +429,15 @@
                 };
                 
                 // Hard-coded fallback TURN server credentials
-                // IMPORTANT: These should match the values in your .env file
+                // Using long-term credential mechanism with JUST the username
+                // Some TURN servers can work with just a username and no password
                 const fallbackTurnConfig = {
                     urls: [
-                        'turn:143.198.180.248:3478',
+                        'turn:143.198.180.248:3478?transport=udp',
                         'turn:143.198.180.248:3478?transport=tcp'
                     ],
-                    username: 'webrtcuser8888',
-                    credential: 'supersecret8888'
+                    username: 'webrtcuser8888'
+                    // No password specified - some TURN servers support this mode
                 };
                 
                 // Get the server URL from the signaling input field
@@ -480,7 +481,18 @@
                     log('Using fallback TURN configuration', 'warning');
                     // Add fallback TURN server to our configuration
                     configuration.iceServers.push(fallbackTurnConfig);
-                    log(`Added fallback TURN server: ${fallbackTurnConfig.urls.join(', ')}`);
+                    log(`Added fallback TURN server: ${fallbackTurnConfig.urls.join(', ')} with username: ${fallbackTurnConfig.username}`);
+                    
+                    // Add public STUN servers as additional fallbacks
+                    const publicStunServers = [
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        { urls: 'stun:stun2.l.google.com:19302' },
+                        { urls: 'stun:stun3.l.google.com:19302' },
+                        { urls: 'stun:stun4.l.google.com:19302' }
+                    ];
+                    
+                    configuration.iceServers.push(...publicStunServers);
+                    log(`Added ${publicStunServers.length} public STUN servers as fallback`);
                 }
                 
                 peerConnection = new RTCPeerConnection(configuration);
