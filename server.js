@@ -874,6 +874,32 @@ app.get('/health', (req, res) => {
   });
 });
 
+// WebRTC configuration endpoint to provide ICE server info
+app.get('/webrtc-config', (req, res) => {
+  // Get TURN configuration from environment variables
+  const turnUrls = envConfig.TURN_URLS.value.split(',').map(url => url.trim());
+  const turnUsername = envConfig.TURN_USERNAME.value;
+  const turnPassword = envConfig.TURN_PASSWORD.value;
+  
+  // Create configuration object with TURN and STUN servers
+  const rtcConfig = {
+    iceServers: [
+      // Add TURN servers from environment variables
+      ...turnUrls.map(url => ({
+        urls: url,
+        username: turnUsername,
+        credential: turnPassword
+      })),
+      // Add public STUN servers as fallback
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ],
+    iceCandidatePoolSize: 10
+  };
+  
+  res.json(rtcConfig);
+});
+
 // Add configuration endpoint for debugging
 app.get('/debug/config', (req, res) => {
   const configSummary = {

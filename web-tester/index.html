@@ -153,14 +153,13 @@
     <script>
         // DOM elements
         const serverUrlInput = document.getElementById('serverUrl');
-        const targetIdInput = document.getElementById('targetId');
-        const connectionStatusEl = document.getElementById('connectionStatus');
+        const deviceRoleInput = document.getElementById('deviceRole');
         const deviceIdEl = document.getElementById('deviceId');
-        const callStatusEl = document.getElementById('callStatus');
+        const targetIdInput = document.getElementById('targetId');
         const callButton = document.getElementById('callButton');
         const endButton = document.getElementById('endButton');
-        const remoteVideo = document.getElementById('remoteVideo');
-        const localVideo = document.getElementById('localVideo');
+        const connectionStatusEl = document.getElementById('connectionStatus');
+        const callStatusEl = document.getElementById('callStatus');
         const logContainer = document.getElementById('logContainer');
 
         // WebRTC variables
@@ -171,6 +170,12 @@
         let remoteStream = null;
         let isConnected = false;
         let isInCall = false;
+        
+        // Connection backoff parameters to avoid rate limiting
+        let connectionAttempts = 0;
+        let backoffDelay = 1000; // Start with 1 second
+        let maxBackoffDelay = 30000; // Max 30 seconds
+        let connectionTimer = null;
 
         // Log function
         function log(message) {
@@ -198,7 +203,7 @@
             const serverUrl = serverUrlInput.value;
             
             log(`Connecting to signaling server: ${serverUrl}`);
-            connectionStatusEl.textContent = 'Connecting...';
+            connectionStatusEl.textContent = "Connecting...";
             
             try {
                 // Close any existing socket
@@ -206,31 +211,75 @@
                     socket.close();
                 }
                 
-                socket = io(serverUrl, {
-                    transports: ['websocket', 'polling'],  // Try both transport types
+                // Enhanced socket.io options for better compatibility with server
+                const socketOptions = {
+                    // Transport configuration - match iOS app's transport priority
+                    transports: ['polling', 'websocket'],
+                    
+                    // Connection settings
                     reconnection: true,
                     reconnectionAttempts: 10,
-                    reconnectionDelay: 1000,
-                    timeout: 10000
-                });
+                    reconnectionDelay: 2000,
+                    reconnectionDelayMax: 10000,
+                    timeout: 30000,
+                    
+                    // Security settings - match iOS app
+                    secure: serverUrl.startsWith('https'),
+                    rejectUnauthorized: false,
+                    
+                    // Force new connection to avoid caching issues
+                    forceNew: true,
+                    
+                    // Headers for compatibility with server CORS rules
+                    extraHeaders: {
+                        'Origin': 'https://api.justinmolds.com',
+                        'User-Agent': 'BillsPhone-Web/1.0.0'
+                    },
+                    
+                    // Query parameters for server-side identification
+                    query: {
+                        deviceId: deviceId, 
+                        platform: 'web'
+                    },
+                    
+                    // Other settings from iOS app
+                    upgrade: true,
+                    rememberUpgrade: false,
+                    jsonp: false,
+                    withCredentials: true,
+                    autoConnect: true
+                };
                 
+                log(`Attempting connection with iOS-compatible options...`);
+                socket = io(serverUrl, socketOptions);
                 setupSocketEvents();
                 
-                // Auto-reconnect if connection fails within 5 seconds
-                setTimeout(() => {
-                    if (!isConnected) {
-                        log('Connection timeout - trying polling transport');
-                        socket.close();
+                // Add timeout fallback similar to iOS app
+                const connectionTimeout = setTimeout(() => {
+                    if (connectionStatusEl.textContent === "Connecting...") {
+                        log('Connection timeout - trying polling-only transport');
+                        
+                        // Disconnect current attempt
+                        socket.disconnect();
+                        
+                        // Try polling-only mode
                         socket = io(serverUrl, {
-                            transports: ['polling'],  // Fallback to polling
-                            reconnection: true
+                            ...socketOptions,
+                            transports: ['polling'], // Polling only
+                            timeout: 15000
                         });
+                        
                         setupSocketEvents();
                     }
-                }, 5000);
+                }, 8000);
+                
+                // Clear timeout on successful connection
+                socket.on('connect', () => {
+                    clearTimeout(connectionTimeout);
+                });
             } catch (error) {
-                log(`Connection error: ${error.message}`);
-                connectionStatusEl.textContent = 'Connection Failed';
+                log(`Connection error: ${error.message || error}`);
+                connectionStatusEl.textContent = "Connection Failed";
             }
         }
 
@@ -343,60 +392,60 @@
                 endCall();
             });
         }
-
         async function setupPeerConnection() {
             log('Setting up peer connection');
             
             try {
-                // Get user media with explicit error handling
-                try {
-                    log('Requesting camera and microphone permissions...');
-                    localStream = await navigator.mediaDevices.getUserMedia({
-                        audio: true,
-                        video: true
-                    });
-                    
-                    log(`Media access granted: ${localStream.getTracks().length} tracks`);
-                    // Log each track type
-                    localStream.getTracks().forEach(track => {
-                        log(`Local track: ${track.kind} (${track.readyState}) - label: ${track.label}`);
-                    });
-                    
-                    localVideo.srcObject = localStream;
-                    log('Local video element setup complete');
-                    
-                    // Add immediate visual feedback
-                    localVideo.onloadedmetadata = () => {
-                        log('Local video metadata loaded');
-                    };
-                    
-                    localVideo.onplay = () => {
-                        log('Local video playing');
-                    };
-                    
-                    localVideo.onerror = (e) => {
-                        log(`Local video error: ${e}`);
-                    };
-                } catch (error) {
-                    log(`Media access ERROR: ${error.name} - ${error.message}`);
-                    alert(`Could not access camera or microphone: ${error.message}\n\nPlease ensure you've granted necessary permissions.`);
-                    return false;
-                }
+                // Step 1: Request camera and microphone permissions
+                log('Requesting camera and microphone permissions...');
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    audio: true,
+                    video: true
+                });
                 
-                // Create peer connection
-                const configuration = {
-                    iceServers: [
-  ...((window.env && window.env.TURN_URLS ? window.env.TURN_URLS : '').split(',').filter(Boolean).map(function(url) {
-    return {
-      urls: url.trim(),
-      username: (window.env && window.env.TURN_USERNAME) || 'webrtcuser88',
-      credential: (window.env && window.env.TURN_PASSWORD) || 'supersecret88'
-    };
-  })),
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' }
-]
+                log(`Media access granted: ${localStream.getTracks().length} tracks`);
+                // Log each track type
+                localStream.getTracks().forEach(track => {
+                    log(`Local track: ${track.kind} (${track.readyState}) - label: ${track.label}`);
+                });
+                
+                // Display local video
+                localVideo.srcObject = localStream;
+                log('Local video element setup complete');
+                
+                // Add immediate visual feedback
+                localVideo.onloadedmetadata = () => {
+                    log('Local video metadata loaded');
                 };
+                
+                // Step 2: Fetch WebRTC configuration from server
+                log('Fetching WebRTC configuration from server...');
+                let configuration = {
+                    iceServers: [
+                        // Fallback STUN server if fetch fails
+                        { urls: 'stun:stun.l.google.com:19302' }
+                    ]
+                };
+                
+                // Get the server URL from the signaling input field
+                const serverUrl = serverUrlInput.value;
+                const baseUrl = serverUrl.split('/socket.io')[0]; // Remove any socket.io path
+                const configUrl = `${baseUrl}/webrtc-config`;
+                
+                try {
+                    const response = await fetch(configUrl);
+                    if (response.ok) {
+                        const config = await response.json();
+                        configuration = config;
+                        log('Successfully fetched WebRTC configuration from server');
+                        log(`Using ${configuration.iceServers.length} ICE servers from server`);
+                    } else {
+                        log('Failed to fetch WebRTC configuration, using fallback', 'error');
+                    }
+                } catch (error) {
+                    log(`Error fetching WebRTC configuration: ${error.message}`, 'error');
+                    log('Using fallback configuration', 'warning');
+                }
                 
                 peerConnection = new RTCPeerConnection(configuration);
                 
