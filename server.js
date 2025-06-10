@@ -881,6 +881,12 @@ app.get('/webrtc-config', (req, res) => {
   const turnUsername = envConfig.TURN_USERNAME.value;
   const turnPassword = envConfig.TURN_PASSWORD.value;
   
+  // Debug log the environment variable values
+  console.log('TURN Configuration Variables:');
+  console.log('- TURN_URLS:', turnUrls);
+  console.log('- TURN_USERNAME:', turnUsername);
+  console.log('- TURN_PASSWORD:', turnPassword ? '***[redacted]***' : 'MISSING');
+  
   // Create configuration object with TURN and STUN servers
   const rtcConfig = {
     iceServers: [
@@ -897,7 +903,33 @@ app.get('/webrtc-config', (req, res) => {
     iceCandidatePoolSize: 10
   };
   
+  // Ensure CORS is properly set for all origins
+  res.set('Access-Control-Allow-Origin', req.header('Origin') || '*');
+  res.set('Access-Control-Allow-Credentials', 'true');
+  res.set('Access-Control-Max-Age', '86400');
+  
+  console.log('Sending WebRTC config to client:', JSON.stringify(rtcConfig, null, 2).replace(turnPassword, '***[redacted]***'));
   res.json(rtcConfig);
+});
+
+// Debug endpoint for WebRTC config - plain text for easier debugging
+app.get('/debug-webrtc-config', (req, res) => {
+  const turnUrls = envConfig.TURN_URLS.value.split(',').map(url => url.trim());
+  const turnUsername = envConfig.TURN_USERNAME.value;
+  const turnPassword = envConfig.TURN_PASSWORD.value;
+  
+  res.set('Access-Control-Allow-Origin', req.header('Origin') || '*');
+  res.set('Content-Type', 'text/plain');
+  
+  const output = `
+WebRTC Configuration Debug:
+-----------------------
+TURN_URLS: ${turnUrls.join(', ')}
+TURN_USERNAME: ${turnUsername}
+TURN_PASSWORD: ${turnPassword ? '[PRESENT]' : '[MISSING]'}
+`;
+  
+  res.send(output);
 });
 
 // Add configuration endpoint for debugging

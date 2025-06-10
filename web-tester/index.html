@@ -422,9 +422,21 @@
                 log('Fetching WebRTC configuration from server...');
                 let configuration = {
                     iceServers: [
-                        // Fallback STUN server if fetch fails
-                        { urls: 'stun:stun.l.google.com:19302' }
+                        // Fallback STUN servers if fetch fails
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
                     ]
+                };
+                
+                // Hard-coded fallback TURN server credentials
+                // IMPORTANT: These should match the values in your .env file
+                const fallbackTurnConfig = {
+                    urls: [
+                        'turn:143.198.180.248:3478',
+                        'turn:143.198.180.248:3478?transport=tcp'
+                    ],
+                    username: 'webrtcuser8888',
+                    credential: 'supersecret8888'
                 };
                 
                 // Get the server URL from the signaling input field
@@ -432,19 +444,43 @@
                 const baseUrl = serverUrl.split('/socket.io')[0]; // Remove any socket.io path
                 const configUrl = `${baseUrl}/webrtc-config`;
                 
+                let fetchSuccess = false;
                 try {
-                    const response = await fetch(configUrl);
+                    log(`Requesting config from: ${configUrl}`);
+                    const fetchOptions = {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Cache-Control': 'no-cache'
+                        },
+                        mode: 'cors',
+                        credentials: 'omit',
+                    };
+                    
+                    const response = await Promise.race([
+                        fetch(configUrl, fetchOptions),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('Fetch timeout')), 5000))
+                    ]);
+                    
                     if (response.ok) {
                         const config = await response.json();
+                        fetchSuccess = true;
                         configuration = config;
-                        log('Successfully fetched WebRTC configuration from server');
+                        log('✅ Successfully fetched WebRTC configuration from server');
                         log(`Using ${configuration.iceServers.length} ICE servers from server`);
+                        log(`TURN servers: ${JSON.stringify(configuration.iceServers.filter(s => s.urls.toString().includes('turn:')))}`);
                     } else {
-                        log('Failed to fetch WebRTC configuration, using fallback', 'error');
+                        log(`Failed to fetch WebRTC config: HTTP ${response.status} ${response.statusText}`, 'error');
                     }
                 } catch (error) {
                     log(`Error fetching WebRTC configuration: ${error.message}`, 'error');
-                    log('Using fallback configuration', 'warning');
+                }
+                
+                if (!fetchSuccess) {
+                    log('Using fallback TURN configuration', 'warning');
+                    // Add fallback TURN server to our configuration
+                    configuration.iceServers.push(fallbackTurnConfig);
+                    log(`Added fallback TURN server: ${fallbackTurnConfig.urls.join(', ')}`);
                 }
                 
                 peerConnection = new RTCPeerConnection(configuration);
@@ -492,26 +528,71 @@
                     }
                 };
                 
-                // Handle ICE candidates
+                // Handle ICE candidates with detailed logging
                 peerConnection.onicecandidate = (event) => {
                     if (event.candidate) {
-                        log('Sending ICE candidate');
+                        // Log detailed info about the candidate
+                        const candidateInfo = event.candidate.candidate || 'unknown';
+                        log(`ICE candidate: ${candidateInfo}`);
+                        
+                        // Check if this is a TURN relay candidate
+                        if (candidateInfo.indexOf('relay') > -1) {
+                            log('✅ TURN relay candidate found - TURN server working properly!');
+                        }
+                        
                         socket.emit('iceCandidate', {
                             to: targetIdInput.value,
                             candidate: event.candidate
                         });
+                    } else {
+                        log('ICE candidate gathering complete');
                     }
                 };
                 
-                // Handle connection state changes
+                // Add ICE gathering state change handler
+                peerConnection.onicegatheringstatechange = () => {
+                    log(`ICE gathering state: ${peerConnection.iceGatheringState}`);
+                };
+                
+                // Handle connection state changes with more detailed diagnostics
                 peerConnection.oniceconnectionstatechange = () => {
-                    log(`ICE connection state: ${peerConnection.iceConnectionState}`);
+                    const state = peerConnection.iceConnectionState;
+                    log(`ICE connection state changed to: ${state}`);
                     
-                    if (peerConnection.iceConnectionState === 'connected') {
-                        callStatusEl.textContent = 'Connected';
-                    } else if (peerConnection.iceConnectionState === 'disconnected' || 
-                               peerConnection.iceConnectionState === 'failed') {
-                        endCall();
+                    switch (state) {
+                        case 'connected':
+                            log('✅ ICE connection established successfully');
+                            callStatusEl.textContent = 'Connected';
+                            break;
+                        case 'checking':
+                            log('⌛ ICE connection checking - validating candidates...');
+                            break;
+                        case 'failed':
+                            log('❌ ICE connection failed - could not establish connection');
+                            log('This typically happens when TURN server authentication fails');
+                            log('Verify TURN credentials match between server and client');
+                            endCall();
+                            break;
+                        case 'disconnected':
+                            log('⚠ ICE connection lost - attempting to recover...');
+                            break;
+                        case 'closed':
+                            log('ICE connection closed');
+                            break;
+                    }
+                };
+                
+                // Add signaling state change handler
+                peerConnection.onsignalingstatechange = () => {
+                    log(`Signaling state changed to: ${peerConnection.signalingState}`);
+                };
+                
+                // Add connection state change handler
+                peerConnection.onconnectionstatechange = () => {
+                    log(`Connection state changed to: ${peerConnection.connectionState}`);
+                    
+                    if (peerConnection.connectionState === 'connected') {
+                        log('✅ Peer connection fully established!');
                     }
                 };
                 
