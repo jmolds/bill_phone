@@ -139,25 +139,32 @@ const corsOptions = {
     // Allow requests with no origin (mobile apps, Postman, etc.)
     if (!origin) return callback(null, true);
     
-    const allowedOrigins = [
-      'http://localhost:19000',
-      'http://localhost:19001', 
-      'http://localhost:3000',
-      'https://api.justinmolds.com',
-      'https://localhost:3000', // For local HTTPS testing
+    // Use ALLOWED_ORIGINS from environment configuration
+    const dynamicAllowedOrigins = ALLOWED_ORIGINS;
+    
+    // Add regex patterns for dynamic origins
+    const regexOrigins = [
       /^https:\/\/.*\.expo\.dev$/, // Expo development URLs
       /^https:\/\/.*\.ngrok\.io$/, // Ngrok tunnels for testing
     ];
     
-    const isAllowed = allowedOrigins.some(allowed => {
-      return typeof allowed === 'string' ? allowed === origin : allowed.test(origin);
-    });
+    // Check if origin matches any string in ALLOWED_ORIGINS
+    const isAllowedString = dynamicAllowedOrigins.includes(origin);
     
-    if (isAllowed) {
+    // Check if origin matches any regex pattern
+    const isAllowedPattern = regexOrigins.some(pattern => pattern.test(origin));
+    
+    if (isAllowedString || isAllowedPattern) {
       callback(null, true);
     } else {
       logger.warn(`CORS rejected origin: ${origin}`);
-      callback(null, true); // Allow all in development - restrict in production
+      // In production mode, strictly enforce CORS
+      if (NODE_ENV === 'production') {
+        callback(new Error(`Origin ${origin} not allowed by CORS`), false);
+      } else {
+        // In development, log warning but allow
+        callback(null, true);
+      }
     }
   },
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
