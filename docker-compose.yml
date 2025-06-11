@@ -8,6 +8,7 @@ services:
     restart: unless-stopped
     depends_on:
       - db
+      - turnserver
     environment:
       # Database Configuration (EXISTING - KEEP THESE)
       - POSTGRES_HOST=db
@@ -16,47 +17,78 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       
-      # ADD THESE - Missing environment variables for production mode & iOS
-      - NODE_ENV=${NODE_ENV:-production}              # THIS WAS MISSING!
+      # Server Configuration (Enhanced)
+      - NODE_ENV=${NODE_ENV:-production}
       - PORT=${PORT:-3000}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
-      - TURN_URLS=${TURN_URLS}                        # iOS WebRTC needs this
-      - TURN_USERNAME=${TURN_USERNAME}                # iOS WebRTC needs this  
-      - TURN_PASSWORD=${TURN_PASSWORD}                # iOS WebRTC needs this
+      
+      # TURN Configuration (iOS WebRTC Critical)
+      - TURN_URLS=${TURN_URLS}
+      - TURN_USERNAME=${TURN_USERNAME}
+      - TURN_PASSWORD=${TURN_PASSWORD}
+      
+      # Security Configuration
       - SESSION_SECRET=${SESSION_SECRET}
       - LOG_LEVEL=${LOG_LEVEL:-info}
-      - MAX_CONNECTIONS_PER_MINUTE=${MAX_CONNECTIONS_PER_MINUTE:-20}
+      
+      # Rate Limiting (Enhanced for iOS)
+      - MAX_CONNECTIONS_PER_MINUTE=${MAX_CONNECTIONS_PER_MINUTE:-1000}
       - CONNECTION_WINDOW_MS=${CONNECTION_WINDOW_MS:-60000}
+      
+      # CORS Configuration (iOS Production)
       - CORS_ALLOW_CREDENTIALS=${CORS_ALLOW_CREDENTIALS:-true}
       - CORS_MAX_AGE=${CORS_MAX_AGE:-86400}
+      
+      # WebSocket Configuration (iOS Compatibility)
       - WS_PING_TIMEOUT=${WS_PING_TIMEOUT:-30000}
       - WS_PING_INTERVAL=${WS_PING_INTERVAL:-25000}
       - WS_CONNECTION_TIMEOUT=${WS_CONNECTION_TIMEOUT:-60000}
+      
+      # iOS-Specific Optimizations
       - IOS_CONNECTION_TIMEOUT=${IOS_CONNECTION_TIMEOUT:-60000}
       - IOS_HEARTBEAT_INTERVAL=${IOS_HEARTBEAT_INTERVAL:-30000}
       - IOS_FALLBACK_ENABLED=${IOS_FALLBACK_ENABLED:-true}
     volumes:
       - .:/app
       - /app/node_modules
+      - signaling_logs:/var/log
     entrypoint: ["sh", "-c", "chmod +x /app/init-db.sh && /app/init-db.sh && node server.js"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
+    networks:
+      - billphone_network
 
   turnserver:
     image: instrumentisto/coturn:latest
     restart: unless-stopped
     volumes:
-      - ./turnserver.conf:/etc/coturn/turnserver.conf
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - coturn_logs:/var/log
+      - coturn_db:/var/lib/coturn
     ports:
-      - "3478:3478"
-      - "3478:3478/udp"
-      # Relay ports for TURN (UDP, can be adjusted as needed)
+      - "3478:3478"          # TURN UDP
+      - "3478:3478/udp"      # TURN UDP
+      - "5349:5349"          # TURNS TCP
+      - "5349:5349/udp"      # TURNS UDP  
+      - "3479:3479"          # Alt TURN TCP
+      - "3479:3479/udp"      # Alt TURN UDP
+      - "5350:5350"          # Alt TURNS TCP
+      - "5350:5350/udp"      # Alt TURNS UDP
+      # Relay ports for TURN (UDP range for media)
       - "49160-49200:49160-49200/udp"
     command: ["-c", "/etc/coturn/turnserver.conf"]
+    healthcheck:
+      test: ["CMD", "netstat", "-an", "|", "grep", ":3478"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    networks:
+      - billphone_network
 
   db:
     image: postgres:15-alpine
@@ -65,12 +97,59 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    # ports:
-    #   - "5432:5432"
+      # Performance optimizations for small-scale deployment
+      POSTGRES_SHARED_BUFFERS: 256MB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 1GB
+      POSTGRES_MAINTENANCE_WORK_MEM: 64MB
+      POSTGRES_CHECKPOINT_COMPLETION_TARGET: 0.9
+      POSTGRES_WAL_BUFFERS: 16MB
+      POSTGRES_DEFAULT_STATISTICS_TARGET: 100
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
       - ./assets/default-profile.jpg:/docker-entrypoint-initdb.d/default-profile.jpg
+      - postgres_logs:/var/log/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    networks:
+      - billphone_network
 
+  # Optional: Add a reverse proxy for production (commented out)
+  # nginx:
+  #   image: nginx:alpine
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - ./ssl:/etc/nginx/ssl:ro
+  #   depends_on:
+  #     - signaling
+  #   networks:
+  #     - billphone_network
+
+# Named volumes for data persistence
 volumes:
   pgdata:
+    driver: local
+  coturn_logs:
+    driver: local
+  coturn_db:
+    driver: local
+  signaling_logs:
+    driver: local
+  postgres_logs:
+    driver: local
+
+# Custom network for better container isolation
+networks:
+  billphone_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
