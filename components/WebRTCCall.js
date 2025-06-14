@@ -50,78 +50,133 @@ const WebRTCCall = ({ isCallEnabled, onCallStatusChange, callStatus: externalCal
     }
   }, [externalCallStatus]);
   
-  // Initialize WebRTC and socket connection
+  // Initialize WebRTC and socket connection - with deferred socket initialization
+  // and proper error handling for TestFlight builds
   useEffect(() => {
-    // Setup socket connection with reconnection options
-    socket.current = io(SIGNALING_SERVER_URL, {
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      timeout: 10000,
-    });
+    let isMounted = true;
     
-    // Register device ID when connected
-    socket.current.on('connect', () => {
-      console.log('Connected to signaling server');
-      socket.current.emit('register', { deviceId: DEVICE_ID });
-    });
-    
-    // Handle reconnection events
-    socket.current.on('reconnect', () => {
-      console.log('Reconnected to signaling server');
-      socket.current.emit('register', { deviceId: DEVICE_ID });
-    });
-    
-    socket.current.on('disconnect', () => {
-      console.log('Disconnected from signaling server');
-    });
-    
-    socket.current.on('error', (error) => {
-      console.error('Socket error:', error);
-    });
-    
-    // Listen for incoming calls
-    socket.current.on('incomingCall', async ({ from, offer }) => {
-      // Only accept calls from trusted contact
-      if (from === TRUSTED_CONTACT_ID) {
-        setCallStatus('incoming');
-        onCallStatusChange('incoming');
-        
-        // Create peer connection when receiving a call
-        await setupPeerConnection();
-        
-        // Set the remote description with the offer
-        const remoteDesc = new RTCSessionDescription(offer);
-        await peerConnection.current.setRemoteDescription(remoteDesc);
-        
-        // If auto-answer is enabled, answer immediately
-        // For now, we'll require manual answer for testing
-        // answerCall();
+    // Function to safely initialize socket connection
+    const initializeSocket = async () => {
+      try {
+        // Only create the socket if it doesn't already exist
+        if (!socket.current) {
+          console.log('Initializing socket connection to:', SIGNALING_SERVER_URL);
+          
+          // Setup socket connection with reconnection options
+          socket.current = io(SIGNALING_SERVER_URL, {
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            timeout: 10000,
+            // Add explicit transport options to avoid WebSocket issues on iOS
+            transports: ['websocket', 'polling'],
+          });
+          
+          // Register device ID when connected
+          socket.current.on('connect', () => {
+            console.log('Connected to signaling server');
+            if (socket.current) {
+              socket.current.emit('register', { deviceId: DEVICE_ID });
+            }
+          });
+          
+          // Handle reconnection events
+          socket.current.on('reconnect', () => {
+            console.log('Reconnected to signaling server');
+            if (socket.current) {
+              socket.current.emit('register', { deviceId: DEVICE_ID });
+            }
+          });
+          
+          socket.current.on('disconnect', () => {
+            console.log('Disconnected from signaling server');
+          });
+          
+          socket.current.on('error', (error) => {
+            console.error('Socket error:', error);
+            // Don't crash on socket errors
+          });
+          
+          // Listen for incoming calls with safe error handling
+          socket.current.on('incomingCall', async ({ from, offer }) => {
+            try {
+              // Only accept calls from trusted contact
+              if (from === TRUSTED_CONTACT_ID && isMounted) {
+                setCallStatus('incoming');
+                onCallStatusChange('incoming');
+                
+                // Create peer connection when receiving a call
+                const success = await setupPeerConnection();
+                
+                // Only proceed if peer connection was successfully created
+                if (success && peerConnection.current && isMounted) {
+                  // Set the remote description with the offer
+                  const remoteDesc = new RTCSessionDescription(offer);
+                  await peerConnection.current.setRemoteDescription(remoteDesc);
+                }
+              }
+            } catch (error) {
+              console.error('Error handling incoming call:', error);
+              // Don't crash on errors handling incoming calls
+            }
+          });
+          
+          // Handle ICE candidates safely
+          socket.current.on('iceCandidate', async ({ candidate }) => {
+            try {
+              if (peerConnection.current && isMounted) {
+                await peerConnection.current.addIceCandidate(
+                  new RTCIceCandidate(candidate)
+                );
+              }
+            } catch (error) {
+              console.error('Error adding ICE candidate:', error);
+              // Don't crash on ICE candidate errors
+            }
+          });
+          
+          // Handle call accepted
+          socket.current.on('callAccepted', async ({ answer }) => {
+            try {
+              if (callStatus === 'calling' && peerConnection.current && isMounted) {
+                const remoteDesc = new RTCSessionDescription(answer);
+                await peerConnection.current.setRemoteDescription(remoteDesc);
+              }
+            } catch (error) {
+              console.error('Error handling accepted call:', error);
+              // Don't crash on errors when handling accepted calls
+            }
+          });
+          
+          // Handle call ended
+          socket.current.on('callEnded', () => {
+            if (isMounted) {
+              endCall();
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Socket initialization error:', error);
+        // Don't crash on socket initialization errors
       }
-    });
+    };
     
-    // Handle ICE candidates
-    socket.current.on('iceCandidate', async ({ candidate }) => {
-      if (peerConnection.current) {
-        await peerConnection.current.addIceCandidate(
-          new RTCIceCandidate(candidate)
-        );
+    // Don't initialize socket immediately on component mount
+    // Only initialize when needed (when call status changes)
+    if (externalCallStatus === 'calling' || externalCallStatus === 'incoming') {
+      initializeSocket();
+    }
+    
+    // Cleanup function
+    return () => {
+      isMounted = false;
+      // Clean up socket connection if component unmounts
+      if (socket.current) {
+        socket.current.disconnect();
       }
-    });
-    
-    // Handle call accepted
-    socket.current.on('callAccepted', async ({ answer }) => {
-      if (callStatus === 'calling' && peerConnection.current) {
-        const remoteDesc = new RTCSessionDescription(answer);
-        await peerConnection.current.setRemoteDescription(remoteDesc);
-      }
-    });
-    
-    // Handle call ended
-    socket.current.on('callEnded', () => {
-      endCall();
-    });
+    };
+  }, [externalCallStatus, callStatus]);
     
     // Clean up resources when component unmounts
     return () => {
@@ -130,12 +185,79 @@ const WebRTCCall = ({ isCallEnabled, onCallStatusChange, callStatus: externalCal
       }
       cleanupWebRTC();
     };
-  }, []);
+  }, [externalCallStatus, callStatus]);
 
-  // Set up WebRTC peer connection
+  // Set up WebRTC peer connection with safer media permission handling
   const setupPeerConnection = async () => {
     try {
-      // Get user media (camera and microphone)
+      console.log('Setting up peer connection and requesting media permissions');
+      
+      // Create peer connection first with minimal STUN servers
+      // This allows us to separate connection errors from permission errors
+      const configuration = {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun3.l.google.com:19302' },
+          { urls: 'stun:stun4.l.google.com:19302' }
+        ]
+      };
+      
+      // Create peer connection before requesting media to separate errors
+      peerConnection.current = new RTCPeerConnection(configuration);
+      
+      // Set up event handlers for connection before adding media
+      // Handle incoming stream
+      peerConnection.current.ontrack = (event) => {
+        try {
+          if (event.streams && event.streams[0]) {
+            console.log('Remote stream received');
+            setRemoteStream(event.streams[0]);
+          }
+        } catch (error) {
+          console.error('Error handling remote stream:', error);
+          // Don't crash on remote stream errors
+        }
+      };
+      
+      // Handle ICE candidates
+      peerConnection.current.onicecandidate = (event) => {
+        try {
+          if (event.candidate && socket.current) {
+            console.log('ICE candidate generated');
+            socket.current.emit('iceCandidate', {
+              to: TRUSTED_CONTACT_ID,
+              candidate: event.candidate,
+            });
+          }
+        } catch (error) {
+          console.error('Error handling ICE candidate:', error);
+          // Don't crash on ICE candidate errors
+        }
+      };
+      
+      // Handle connection state changes
+      peerConnection.current.oniceconnectionstatechange = () => {
+        try {
+          const state = peerConnection.current ? peerConnection.current.iceConnectionState : 'unknown';
+          console.log('ICE connection state changed to:', state);
+          
+          if (state === 'connected') {
+            setCallStatus('connected');
+            onCallStatusChange('connected');
+          } else if (state === 'disconnected' || state === 'failed') {
+            console.log('ICE connection failed or disconnected');
+            endCall();
+          }
+        } catch (error) {
+          console.error('Error handling ICE connection state change:', error);
+          // Don't crash on connection state errors
+        }
+      };
+      
+      // Now that the peer connection is set up, request media permissions
+      console.log('Requesting media permissions...');
       const mediaConstraints = {
         audio: true,
         video: {
@@ -146,60 +268,53 @@ const WebRTCCall = ({ isCallEnabled, onCallStatusChange, callStatus: externalCal
         },
       };
       
-      const stream = await mediaDevices.getUserMedia(mediaConstraints);
-      setLocalStream(stream);
-      
-      // Create peer connection
-      const configuration = {
-        iceServers: [
-  ...((process.env.TURN_URLS || '').split(',').filter(Boolean).map(url => ({ urls: url.trim(), username: process.env.TURN_USERNAME || 'webrtcuser8888', credential: process.env.TURN_PASSWORD || 'supersecret8888' }))),
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:stun3.l.google.com:19302' },
-  { urls: 'stun:stun4.l.google.com:19302' }
-]
-      };
-      
-      peerConnection.current = new RTCPeerConnection(configuration);
-      
-      // Add local stream to peer connection
-      stream.getTracks().forEach((track) => {
-        peerConnection.current.addTrack(track, stream);
+      // Use a timeout to prevent hanging if permissions dialog is stuck
+      let mediaPermissionTimeout;
+      const mediaPromise = new Promise(async (resolve, reject) => {
+        // Set a timeout to handle potential permission dialog hanging
+        mediaPermissionTimeout = setTimeout(() => {
+          reject(new Error('Media permission request timed out'));
+        }, 10000); // 10 second timeout
+        
+        try {
+          const stream = await mediaDevices.getUserMedia(mediaConstraints);
+          clearTimeout(mediaPermissionTimeout);
+          resolve(stream);
+        } catch (err) {
+          clearTimeout(mediaPermissionTimeout);
+          reject(err);
+        }
       });
       
-      // Handle incoming stream
-      peerConnection.current.ontrack = (event) => {
-        if (event.streams && event.streams[0]) {
-          setRemoteStream(event.streams[0]);
-        }
-      };
-      
-      // Handle ICE candidates
-      peerConnection.current.onicecandidate = (event) => {
-        if (event.candidate) {
-          socket.current.emit('iceCandidate', {
-            to: TRUSTED_CONTACT_ID,
-            candidate: event.candidate,
-          });
-        }
-      };
-      
-      // Handle connection state changes
-      peerConnection.current.oniceconnectionstatechange = () => {
-        if (peerConnection.current.iceConnectionState === 'connected') {
-          setCallStatus('connected');
-          onCallStatusChange('connected');
-        } else if (peerConnection.current.iceConnectionState === 'disconnected' ||
-                  peerConnection.current.iceConnectionState === 'failed') {
-          endCall();
-        }
-      };
-      
-      return true;
+      try {
+        const stream = await mediaPromise;
+        console.log('Media permissions granted');
+        setLocalStream(stream);
+        
+        // Add local stream to peer connection
+        stream.getTracks().forEach((track) => {
+          if (peerConnection.current) {
+            peerConnection.current.addTrack(track, stream);
+          }
+        });
+        
+        return true;
+      } catch (mediaError) {
+        console.error('Media permission error:', mediaError);
+        Alert.alert(
+          'Camera/Microphone Access',
+          'Please allow access to your camera and microphone to make calls.',
+          [
+            { text: 'OK', onPress: () => console.log('Media permission alert acknowledged') }
+          ]
+        );
+        onCallStatusChange('idle'); // Reset call status on permission error
+        return false;
+      }
     } catch (error) {
       console.error('Error setting up WebRTC:', error);
-      Alert.alert('Error', 'Could not access camera or microphone');
+      Alert.alert('Connection Error', 'Could not set up call functionality. Please try again later.');
+      onCallStatusChange('idle'); // Reset call status on setup error
       return false;
     }
   };

@@ -137,8 +137,32 @@ export const testICEGathering = async (logger = console.log) => {
     const config = await getWebRTCConfiguration(logger);
     
     // Import WebRTC components
-    const { RTCPeerConnection } = require('react-native-webrtc');
+    const { RTCPeerConnection, MediaStream } = require('react-native-webrtc');
     const pc = new RTCPeerConnection(config);
+    
+    // Create a dummy audio track for the peer connection
+    // This is necessary to ensure the SDP has a BUNDLE group when using max-bundle
+    logger('📝 Adding dummy audio track for proper BUNDLE group creation');
+    try {
+      // Create an empty MediaStream
+      const dummyStream = new MediaStream();
+      
+      // Use getUserMedia to get a real audio track
+      // This is the most reliable way on iOS to create a proper audio track
+      const stream = await require('react-native-webrtc').mediaDevices.getUserMedia({
+        audio: true,
+        video: false
+      });
+      
+      // Add all tracks from the stream to the peer connection
+      stream.getTracks().forEach(track => {
+        pc.addTrack(track, dummyStream);
+        logger('   ✅ Added audio track to peer connection');
+      });
+    } catch (err) {
+      logger(`   ⚠️ Warning: Could not add audio track: ${err.message}`);
+      logger('   Connectivity test may fail due to missing BUNDLE group');
+    }
     
     return new Promise((resolve) => {
       const results = {

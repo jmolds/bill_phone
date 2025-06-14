@@ -65,11 +65,14 @@
         .end-button {
             background-color: #F44336;
         }
+        .test-button {
+            background-color: #009688;
+        }
         .log-container {
             background-color: rgba(255,255,255,0.1);
             border-radius: 10px;
             padding: 10px;
-            height: 150px;
+            height: 200px;
             overflow-y: auto;
             font-family: monospace;
             font-size: 12px;
@@ -82,7 +85,7 @@
             display: block;
             margin-bottom: 5px;
         }
-        input[type="text"] {
+        input[type="text"], select {
             width: 100%;
             padding: 10px;
             border-radius: 5px;
@@ -90,15 +93,33 @@
             background-color: rgba(255,255,255,0.2);
             color: white;
         }
+        select option {
+            background-color: #333;
+            color: white;
+        }
+        .config-status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        .config-success {
+            background-color: rgba(76, 175, 80, 0.2);
+            border: 1px solid #4CAF50;
+        }
+        .config-error {
+            background-color: rgba(244, 67, 54, 0.2);
+            border: 1px solid #F44336;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Bill's Phone WebRTC Tester</h1>
+        <h1>Bill's Phone WebRTC Tester v2.0</h1>
         
         <div class="connection-field">
             <label for="serverUrl">Signaling Server URL:</label>
-            <input type="text" id="serverUrl" value="http://143.198.180.248:3000">
+            <input type="text" id="serverUrl" value="https://api.justinmolds.com">
         </div>
         
         <div class="connection-field">
@@ -121,6 +142,7 @@
             <p>Connection Status: <span id="connectionStatus">Disconnected</span></p>
             <p>Device ID: <span id="deviceId">Not assigned</span></p>
             <p>Call Status: <span id="callStatus">Idle</span></p>
+            <div id="configStatus" class="config-status" style="display: none;"></div>
         </div>
         
         <div class="video-container">
@@ -128,21 +150,13 @@
             <video id="localVideo" autoplay playsinline muted></video>
         </div>
         
+        <button id="testConnectivity" class="button test-button">Test Connectivity</button>
         <button id="callButton" class="button call-button">Start Call</button>
         <button id="endButton" class="button end-button" style="display: none;">End Call</button>
 
-        <!-- --- Family User Profile API Tester --- -->
-        <hr style="margin:32px 0; border:1px solid #444;">
-        <!-- <div class="profile-api-section">
-            <h2>Family User Profile API Tester</h2>
-            ... (HTML form hidden in favor of React UI) ...
-        </div> -->
-        <!-- --- End Family User Profile API Tester --- -->
-
-        <!-- React-based Profile Tester (built with main.jsx) -->
+        <!-- React-based Profile Tester -->
         <div id="react-root"></div>
         <script src="main.js"></script>
-        <!-- End React-based Profile Tester -->
 
         <div class="log-container" id="logContainer">
             <div>Logs will appear here...</div>
@@ -158,8 +172,10 @@
         const targetIdInput = document.getElementById('targetId');
         const callButton = document.getElementById('callButton');
         const endButton = document.getElementById('endButton');
+        const testConnectivityButton = document.getElementById('testConnectivity');
         const connectionStatusEl = document.getElementById('connectionStatus');
         const callStatusEl = document.getElementById('callStatus');
+        const configStatusEl = document.getElementById('configStatus');
         const logContainer = document.getElementById('logContainer');
 
         // WebRTC variables
@@ -170,12 +186,7 @@
         let remoteStream = null;
         let isConnected = false;
         let isInCall = false;
-        
-        // Connection backoff parameters to avoid rate limiting
-        let connectionAttempts = 0;
-        let backoffDelay = 1000; // Start with 1 second
-        let maxBackoffDelay = 30000; // Max 30 seconds
-        let connectionTimer = null;
+        let webrtcConfig = null;
 
         // Log function
         function log(message) {
@@ -186,7 +197,197 @@
             console.log(message);
         }
 
-        // Connect to signaling server
+        // WebRTC Configuration Helper (matching iOS app pattern)
+        async function getWebRTCConfiguration() {
+            const serverUrl = serverUrlInput.value;
+            const configUrl = `${serverUrl}/webrtc-config`;
+            
+            log('🔧 Fetching WebRTC configuration from server...');
+            
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
+                
+                const response = await fetch(configUrl, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'User-Agent': 'BillPhone-Web/1.0.0',
+                        'Cache-Control': 'no-cache',
+                        'Pragma': 'no-cache'
+                    },
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const config = await response.json();
+                log(`✅ Server provided ${config.iceServers?.length || 0} ICE servers`);
+                
+                if (!config.iceServers || config.iceServers.length === 0) {
+                    throw new Error('Server returned empty ICE server list');
+                }
+
+                // Log ICE servers (without exposing credentials)
+                config.iceServers.forEach((server, index) => {
+                    const serverType = server.urls.includes('turn:') ? 'TURN' : 
+                                      server.urls.includes('turns:') ? 'TURNS' : 'STUN';
+                    const hasAuth = server.username ? '🔐 (authenticated)' : '🌐 (no auth)';
+                    log(`   ${index + 1}. ${serverType}: ${server.urls} ${hasAuth}`);
+                });
+
+                // Enhance configuration with web optimizations
+                const enhancedConfig = {
+                    ...config,
+                    iceCandidatePoolSize: config.iceCandidatePoolSize || 10,
+                    iceTransportPolicy: config.iceTransportPolicy || 'all',
+                    bundlePolicy: 'max-bundle',
+                    rtcpMuxPolicy: 'require'
+                };
+
+                log('✅ WebRTC configuration ready with optimizations');
+                showConfigStatus('Configuration loaded successfully', true);
+                return enhancedConfig;
+
+            } catch (error) {
+                log(`❌ Failed to fetch WebRTC config: ${error.message}`);
+                log('⚠️  Using STUN-only fallback (TURN features disabled)');
+                log('💡 Calls may not work through NAT/firewalls without TURN servers');
+                
+                const stunOnlyConfig = {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        { urls: 'stun:stun2.l.google.com:19302' }
+                    ],
+                    iceCandidatePoolSize: 10,
+                    iceTransportPolicy: 'all',
+                    bundlePolicy: 'max-bundle',
+                    rtcpMuxPolicy: 'require'
+                };
+                
+                log('📋 Using STUN-only fallback servers');
+                stunOnlyConfig.iceServers.forEach((server, index) => {
+                    log(`   ${index + 1}. STUN: ${server.urls} 🌐 (no auth)`);
+                });
+                
+                showConfigStatus('Using STUN-only fallback - limited connectivity', false);
+                return stunOnlyConfig;
+            }
+        }
+
+        // Show configuration status
+        function showConfigStatus(message, isSuccess) {
+            configStatusEl.textContent = message;
+            configStatusEl.className = `config-status ${isSuccess ? 'config-success' : 'config-error'}`;
+            configStatusEl.style.display = 'block';
+        }
+
+        // Test connectivity function (matching iOS app)
+        async function testConnectivity() {
+            log('🚀 Starting connectivity diagnostics...');
+            callStatusEl.textContent = 'Testing...';
+            testConnectivityButton.disabled = true;
+            
+            try {
+                // Test 1: Server connectivity
+                const serverUrl = serverUrlInput.value;
+                log('🌐 Testing signaling server connectivity...');
+                
+                const healthResponse = await fetch(`${serverUrl}/health`, {
+                    method: 'GET',
+                    timeout: 5000
+                });
+                
+                if (healthResponse.ok) {
+                    const health = await healthResponse.json();
+                    log(`✅ Server reachable - Status: ${health.status}`);
+                } else {
+                    throw new Error(`Server returned ${healthResponse.status}`);
+                }
+                
+                // Test 2: WebRTC config
+                log('🔧 Testing WebRTC configuration...');
+                const config = await getWebRTCConfiguration();
+                webrtcConfig = config;
+                
+                // Test 3: ICE gathering simulation
+                log('🧪 Testing ICE candidate gathering...');
+                const pc = new RTCPeerConnection(config);
+                
+                // Create and add a dummy audio track to the peer connection
+                // This is necessary to ensure the SDP has a BUNDLE group when using max-bundle
+                log('📝 Adding dummy audio track for proper BUNDLE group creation');
+                try {
+                    // Create an audio context and oscillator as a simple audio source
+                    const audioContext = new AudioContext();
+                    const oscillator = audioContext.createOscillator();
+                    const destination = audioContext.createMediaStreamDestination();
+                    oscillator.connect(destination);
+                    
+                    // Add the audio track to the peer connection
+                    const dummyStream = destination.stream;
+                    dummyStream.getTracks().forEach(track => pc.addTrack(track, dummyStream));
+                } catch (err) {
+                    log(`⚠️ Warning: Could not create dummy audio track: ${err.message}`);
+                }
+                
+                let iceCandidates = 0;
+                let turnCandidates = 0;
+                let stunCandidates = 0;
+                
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        iceCandidates++;
+                        const candidate = event.candidate.candidate || '';
+                        
+                        if (candidate.includes('relay')) {
+                            turnCandidates++;
+                            log(`   🔄 TURN candidate found`);
+                        } else if (candidate.includes('srflx')) {
+                            stunCandidates++;
+                            log(`   🌐 STUN candidate found`);
+                        }
+                    }
+                };
+                
+                // Start ICE gathering
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                
+                // Wait for ICE gathering
+                await new Promise((resolve) => {
+                    setTimeout(() => {
+                        pc.close();
+                        resolve();
+                    }, 5000);
+                });
+                
+                log(`✅ ICE gathering complete: ${iceCandidates} total, ${stunCandidates} STUN, ${turnCandidates} TURN`);
+                
+                if (turnCandidates > 0) {
+                    alert('🎉 Connectivity Test Passed!\n\nAll systems working correctly. Calls should work properly.');
+                } else if (stunCandidates > 0) {
+                    alert('⚠️ Partial Connectivity!\n\nSTUN working but no TURN servers detected. Calls may not work through firewalls.');
+                } else {
+                    alert('❌ Connectivity Issues!\n\nNo external connectivity detected. Check your network connection.');
+                }
+                
+            } catch (error) {
+                log(`❌ Connectivity test failed: ${error.message}`);
+                alert(`Connectivity Test Failed\n\n${error.message}`);
+            }
+            
+            callStatusEl.textContent = 'Idle';
+            testConnectivityButton.disabled = false;
+        }
+
+        // Event listeners
         callButton.addEventListener('click', async () => {
             if (!isConnected) {
                 connectToSignalingServer();
@@ -197,6 +398,10 @@
 
         endButton.addEventListener('click', () => {
             endCall();
+        });
+
+        testConnectivityButton.addEventListener('click', () => {
+            testConnectivity();
         });
 
         async function connectToSignalingServer() {
@@ -211,38 +416,25 @@
                     socket.close();
                 }
                 
-                // Enhanced socket.io options for better compatibility with server
+                // Enhanced socket.io options matching iOS app
                 const socketOptions = {
-                    // Transport configuration - match iOS app's transport priority
                     transports: ['polling', 'websocket'],
-                    
-                    // Connection settings
                     reconnection: true,
                     reconnectionAttempts: 10,
                     reconnectionDelay: 2000,
                     reconnectionDelayMax: 10000,
                     timeout: 30000,
-                    
-                    // Security settings - match iOS app
                     secure: serverUrl.startsWith('https'),
                     rejectUnauthorized: false,
-                    
-                    // Force new connection to avoid caching issues
                     forceNew: true,
-                    
-                    // Headers for compatibility with server CORS rules
                     extraHeaders: {
                         'Origin': 'https://api.justinmolds.com',
                         'User-Agent': 'BillsPhone-Web/1.0.0'
                     },
-                    
-                    // Query parameters for server-side identification
                     query: {
-                        deviceId: deviceId, 
-                        platform: 'web'
+                        platform: 'web',
+                        version: '1.0.0'
                     },
-                    
-                    // Other settings from iOS app
                     upgrade: true,
                     rememberUpgrade: false,
                     jsonp: false,
@@ -250,33 +442,28 @@
                     autoConnect: true
                 };
                 
-                log(`Attempting connection with iOS-compatible options...`);
+                log(`Attempting connection with optimized options...`);
                 socket = io(serverUrl, socketOptions);
                 setupSocketEvents();
                 
-                // Add timeout fallback similar to iOS app
+                // Connection timeout fallback
                 const connectionTimeout = setTimeout(() => {
                     if (connectionStatusEl.textContent === "Connecting...") {
                         log('Connection timeout - trying polling-only transport');
-                        
-                        // Disconnect current attempt
                         socket.disconnect();
-                        
-                        // Try polling-only mode
                         socket = io(serverUrl, {
                             ...socketOptions,
-                            transports: ['polling'], // Polling only
+                            transports: ['polling'],
                             timeout: 15000
                         });
-                        
                         setupSocketEvents();
                     }
                 }, 8000);
                 
-                // Clear timeout on successful connection
                 socket.on('connect', () => {
                     clearTimeout(connectionTimeout);
                 });
+                
             } catch (error) {
                 log(`Connection error: ${error.message || error}`);
                 connectionStatusEl.textContent = "Connection Failed";
@@ -287,11 +474,9 @@
             const role = document.getElementById('deviceRole').value;
             const targetSelect = document.getElementById('targetId');
             
-            // Set my device ID based on role
             deviceId = role;
             deviceIdEl.textContent = role;
             
-            // Update target dropdown to exclude my role
             targetSelect.innerHTML = '';
             if (role === 'bills-iphone') {
                 targetSelect.innerHTML = '<option value="family-caller">Family Caller</option>';
@@ -305,7 +490,6 @@
         function setupSocketEvents() {
             socket.on('connect', () => {
                 isConnected = true;
-                // Override the socket.id with our simple role-based ID
                 const role = document.getElementById('deviceRole').value;
                 deviceId = role;
                 deviceIdEl.textContent = deviceId;
@@ -313,16 +497,9 @@
                 callButton.textContent = 'Start Call';
                 log('Connected to signaling server');
                 
-                // Register with the server using our simple ID
                 setTimeout(() => {
                     socket.emit('register', { deviceId: deviceId });
                     log(`Registered as: ${deviceId}`);
-                    
-                    // Send a second registration after a short delay (helps with mobile browser issues)
-                    setTimeout(() => {
-                        socket.emit('register', { deviceId: deviceId });
-                        log(`Re-registered as: ${deviceId}`);
-                    }, 1000);
                 }, 500);
             });
 
@@ -336,10 +513,7 @@
                 log(`Disconnected: ${reason}`);
                 isConnected = false;
                 connectionStatusEl.textContent = 'Disconnected';
-                
-                if (isInCall) {
-                    endCall();
-                }
+                if (isInCall) endCall();
             });
 
             socket.on('incomingCall', async (data) => {
@@ -392,11 +566,12 @@
                 endCall();
             });
         }
+
         async function setupPeerConnection() {
             log('Setting up peer connection');
             
             try {
-                // Step 1: Request camera and microphone permissions
+                // Get media first
                 log('Requesting camera and microphone permissions...');
                 localStream = await navigator.mediaDevices.getUserMedia({
                     audio: true,
@@ -404,214 +579,72 @@
                 });
                 
                 log(`Media access granted: ${localStream.getTracks().length} tracks`);
-                // Log each track type
-                localStream.getTracks().forEach(track => {
-                    log(`Local track: ${track.kind} (${track.readyState}) - label: ${track.label}`);
-                });
-                
-                // Display local video
                 localVideo.srcObject = localStream;
-                log('Local video element setup complete');
                 
-                // Add immediate visual feedback
-                localVideo.onloadedmetadata = () => {
-                    log('Local video metadata loaded');
-                };
-                
-                // Step 2: Fetch WebRTC configuration from server
-                log('Fetching WebRTC configuration from server...');
-                let configuration = {
-                    iceServers: [
-                        // Fallback STUN servers if fetch fails
-                        { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' }
-                    ]
-                };
-                
-                // Hard-coded fallback TURN server credentials
-                // Using long-term credential mechanism with JUST the username
-                // Some TURN servers can work with just a username and no password
-                const fallbackTurnConfig = {
-                    urls: [
-                        'turn:143.198.180.248:3478?transport=udp',
-                        'turn:143.198.180.248:3478?transport=tcp'
-                    ],
-                    username: 'webrtcuser8888'
-                    // No password specified - some TURN servers support this mode
-                };
-                
-                // Get the server URL from the signaling input field
-                const serverUrl = serverUrlInput.value;
-                const baseUrl = serverUrl.split('/socket.io')[0]; // Remove any socket.io path
-                const configUrl = `${baseUrl}/webrtc-config`;
-                
-                let fetchSuccess = false;
-                try {
-                    log(`Requesting config from: ${configUrl}`);
-                    const fetchOptions = {
-                        method: 'GET',
-                        headers: {
-                            'Accept': 'application/json',
-                            'Cache-Control': 'no-cache'
-                        },
-                        mode: 'cors',
-                        credentials: 'omit',
-                    };
-                    
-                    const response = await Promise.race([
-                        fetch(configUrl, fetchOptions),
-                        new Promise((_, reject) => setTimeout(() => reject(new Error('Fetch timeout')), 5000))
-                    ]);
-                    
-                    if (response.ok) {
-                        const config = await response.json();
-                        fetchSuccess = true;
-                        configuration = config;
-                        log('✅ Successfully fetched WebRTC configuration from server');
-                        log(`Using ${configuration.iceServers.length} ICE servers from server`);
-                        log(`TURN servers: ${JSON.stringify(configuration.iceServers.filter(s => s.urls.toString().includes('turn:')))}`);
-                    } else {
-                        log(`Failed to fetch WebRTC config: HTTP ${response.status} ${response.statusText}`, 'error');
-                    }
-                } catch (error) {
-                    log(`Error fetching WebRTC configuration: ${error.message}`, 'error');
+                // Get WebRTC configuration from server (NO HARDCODED SECRETS)
+                if (!webrtcConfig) {
+                    webrtcConfig = await getWebRTCConfiguration();
                 }
                 
-                if (!fetchSuccess) {
-                    log('Using fallback TURN configuration', 'warning');
-                    // Add fallback TURN server to our configuration
-                    configuration.iceServers.push(fallbackTurnConfig);
-                    log(`Added fallback TURN server: ${fallbackTurnConfig.urls.join(', ')} with username: ${fallbackTurnConfig.username}`);
-                    
-                    // Add public STUN servers as additional fallbacks
-                    const publicStunServers = [
-                        { urls: 'stun:stun1.l.google.com:19302' },
-                        { urls: 'stun:stun2.l.google.com:19302' },
-                        { urls: 'stun:stun3.l.google.com:19302' },
-                        { urls: 'stun:stun4.l.google.com:19302' }
-                    ];
-                    
-                    configuration.iceServers.push(...publicStunServers);
-                    log(`Added ${publicStunServers.length} public STUN servers as fallback`);
-                }
+                peerConnection = new RTCPeerConnection(webrtcConfig);
+                log('✅ Peer connection created with server configuration');
                 
-                peerConnection = new RTCPeerConnection(configuration);
-                
-                // Add local stream to peer connection
+                // Add local stream
                 localStream.getTracks().forEach(track => {
                     peerConnection.addTrack(track, localStream);
                 });
                 
-                // Handle remote stream with detailed logging
+                // Handle remote stream
                 peerConnection.ontrack = (event) => {
-                    log(`Received remote track: ${event.track.kind} (${event.track.readyState})`);
-                    log(`Track settings: ${JSON.stringify(event.track.getSettings())}`);
+                    log(`🎥 Received remote track: ${event.track.kind}`);
                     
                     if (event.streams && event.streams[0]) {
                         remoteStream = event.streams[0];
-                        log(`Got remote stream with ${remoteStream.getTracks().length} tracks`);
-                        remoteStream.getTracks().forEach(track => {
-                            log(`Remote track: ${track.kind} (${track.readyState}) - active: ${track.enabled}`);
-                        });
-                        
+                        log(`📺 Got remote stream with ${remoteStream.getTracks().length} tracks`);
                         remoteVideo.srcObject = remoteStream;
-                        log('Remote video element srcObject set');
-                        
-                        // Setup additional event handlers
-                        remoteVideo.onloadedmetadata = () => {
-                            log('Remote video metadata loaded');
-                            // Try to play the video
-                            remoteVideo.play().then(() => {
-                                log('Remote video playing successfully');
-                            }).catch(err => {
-                                log(`Remote video play failed: ${err}`);
-                            });
-                        };
-                        
-                        remoteVideo.onplay = () => {
-                            log('Remote video playing');
-                        };
-                        
-                        remoteVideo.onerror = (e) => {
-                            log(`Remote video error: ${e}`);
-                        };
-                    } else {
-                        log('WARNING: Received track but no streams array');
                     }
                 };
                 
-                // Handle ICE candidates with detailed logging
+                // Handle ICE candidates with enhanced logging
                 peerConnection.onicecandidate = (event) => {
                     if (event.candidate) {
-                        // Log detailed info about the candidate
-                        const candidateInfo = event.candidate.candidate || 'unknown';
-                        log(`ICE candidate: ${candidateInfo}`);
-                        
-                        // Check if this is a TURN relay candidate
-                        if (candidateInfo.indexOf('relay') > -1) {
-                            log('✅ TURN relay candidate found - TURN server working properly!');
-                        }
+                        const candidateType = event.candidate.type || 'unknown';
+                        log(`🧊 ICE candidate: ${candidateType} → ${targetIdInput.value}`);
                         
                         socket.emit('iceCandidate', {
                             to: targetIdInput.value,
                             candidate: event.candidate
                         });
                     } else {
-                        log('ICE candidate gathering complete');
+                        log('✅ ICE candidate gathering completed');
                     }
                 };
                 
-                // Add ICE gathering state change handler
-                peerConnection.onicegatheringstatechange = () => {
-                    log(`ICE gathering state: ${peerConnection.iceGatheringState}`);
-                };
-                
-                // Handle connection state changes with more detailed diagnostics
+                // Enhanced state monitoring
                 peerConnection.oniceconnectionstatechange = () => {
                     const state = peerConnection.iceConnectionState;
-                    log(`ICE connection state changed to: ${state}`);
+                    log(`🔗 ICE connection state: ${state}`);
                     
                     switch (state) {
                         case 'connected':
-                            log('✅ ICE connection established successfully');
+                        case 'completed':
+                            log('🎉 ICE connection established successfully!');
                             callStatusEl.textContent = 'Connected';
                             break;
-                        case 'checking':
-                            log('⌛ ICE connection checking - validating candidates...');
-                            break;
                         case 'failed':
-                            log('❌ ICE connection failed - could not establish connection');
-                            log('This typically happens when TURN server authentication fails');
-                            log('Verify TURN credentials match between server and client');
+                            log('❌ ICE connection failed - call will be terminated');
                             endCall();
                             break;
                         case 'disconnected':
-                            log('⚠ ICE connection lost - attempting to recover...');
+                            log('⚠️ ICE connection disconnected - attempting to reconnect...');
                             break;
-                        case 'closed':
-                            log('ICE connection closed');
-                            break;
-                    }
-                };
-                
-                // Add signaling state change handler
-                peerConnection.onsignalingstatechange = () => {
-                    log(`Signaling state changed to: ${peerConnection.signalingState}`);
-                };
-                
-                // Add connection state change handler
-                peerConnection.onconnectionstatechange = () => {
-                    log(`Connection state changed to: ${peerConnection.connectionState}`);
-                    
-                    if (peerConnection.connectionState === 'connected') {
-                        log('✅ Peer connection fully established!');
                     }
                 };
                 
                 return true;
             } catch (error) {
-                log(`Media error: ${error.message}`);
-                alert(`Could not access camera or microphone: ${error.message}`);
+                log(`❌ WebRTC setup error: ${error.message}`);
+                alert(`Could not set up call: ${error.message}`);
                 return false;
             }
         }
@@ -620,7 +653,7 @@
             const targetId = targetIdInput.value;
             
             if (!targetId) {
-                alert('Please enter a target device ID');
+                alert('Please select a target to call');
                 return;
             }
             
@@ -632,17 +665,14 @@
             
             try {
                 const success = await setupPeerConnection();
-                
                 if (!success) {
                     endCall();
                     return;
                 }
                 
-                // Create offer
                 const offer = await peerConnection.createOffer();
                 await peerConnection.setLocalDescription(offer);
                 
-                // Send offer to signaling server
                 socket.emit('makeCall', {
                     to: targetId,
                     offer: peerConnection.localDescription
@@ -665,11 +695,9 @@
             try {
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
                 
-                // Create answer
                 const answer = await peerConnection.createAnswer();
                 await peerConnection.setLocalDescription(answer);
                 
-                // Send answer to signaling server
                 socket.emit('answerCall', {
                     to: data.from,
                     answer: peerConnection.localDescription
@@ -690,45 +718,32 @@
             endButton.style.display = 'none';
             isInCall = false;
             
-            // Send end call signal if in a call
             if (targetIdInput.value && isConnected) {
                 socket.emit('endCall', { to: targetIdInput.value });
             }
             
-            // Close peer connection
             if (peerConnection) {
                 peerConnection.close();
                 peerConnection = null;
             }
             
-            // Stop local stream
             if (localStream) {
-                localStream.getTracks().forEach(track => {
-                    log(`Stopping local track: ${track.kind}`);
-                    track.stop();
-                });
+                localStream.getTracks().forEach(track => track.stop());
                 localStream = null;
                 localVideo.srcObject = null;
             }
             
-            // Clear remote stream
             if (remoteStream) {
-                remoteStream.getTracks().forEach(track => {
-                    log(`Stopping remote track: ${track.kind}`);
-                    track.stop();
-                });
+                remoteStream.getTracks().forEach(track => track.stop());
                 remoteStream = null;
-                remoteVideo.srcObject = null;
-            } else {
-                log('No remote stream to clean up');
                 remoteVideo.srcObject = null;
             }
         }
 
         // Initialize
-        log('Web tester initialized');
+        log('Web tester v2.0 initialized - Now fetches config from server!');
         callStatusEl.textContent = 'Idle';
-        updateDeviceId(); // Set initial device ID based on role
+        updateDeviceId();
     </script>
 </body>
 </html>
